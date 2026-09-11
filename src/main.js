@@ -362,9 +362,15 @@ async function createWindow() {
 
   if (pendingKetToLoad) {
     try {
-      await mainWindow.webContents.executeJavaScript(
-        `window.ketcher.setMolecule(${JSON.stringify(pendingKetToLoad)})`
-      );
+      // window.ketcher só existe depois que o próprio Ketcher termina de
+      // inicializar — carregar a URL não é suficiente, precisa esperar.
+      await mainWindow.webContents.executeJavaScript(`(async () => {
+        for (let i = 0; i < 100 && !window.ketcher; i++) {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        if (!window.ketcher) throw new Error('Ketcher não inicializou a tempo.');
+        await window.ketcher.setMolecule(${JSON.stringify(pendingKetToLoad)});
+      })()`);
     } catch (err) {
       dialog.showErrorBox('Erro ao abrir estrutura', String((err && err.message) || err));
     }
@@ -439,7 +445,16 @@ if (ketArg) {
   currentExportId = libreOfficeExport.idFromKetPath(ketArg);
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  // A macro "Editar Estrutura Química" do LibreOffice usa esse script pra
+  // saber como reabrir o app com um .ket específico (ver Fase 7).
+  try {
+    libreOfficeExport.ensureLauncherScript(path.join(__dirname, '..'));
+  } catch (err) {
+    console.error('Erro ao gravar o launcher pro LibreOffice:', err.message);
+  }
+  return createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (server) server.close();

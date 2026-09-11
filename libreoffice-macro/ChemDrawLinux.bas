@@ -15,6 +15,13 @@ Function ChemDrawExportDir() As String
     ChemDrawExportDir = Environ("HOME") & "/.local/share/chemdraw-linux/exports"
 End Function
 
+REM Script que o app grava a cada vez que abre, pra dizer pra gente como
+REM relançar ele mesmo com um .ket específico (ver ensureLauncherScript em
+REM src/libreOfficeExport.js).
+Function ChemDrawLauncherPath() As String
+    ChemDrawLauncherPath = Environ("HOME") & "/.local/share/chemdraw-linux/open-ket.sh"
+End Function
+
 Function LerArquivoComoTexto(sPath As String) As String
     Dim iFile As Integer
     Dim sLinha As String
@@ -174,6 +181,11 @@ Sub InserirNoWriter(sEmfPath As String, sId As String, dWidthMM As Double, dHeig
     oGraphic.Height = oSize.Height
 
     oCursor.Text.insertTextContent(oCursor, oGraphic, False)
+
+    REM Deixa a imagem recém-inserida selecionada — tanto pra já poder
+    REM redimensionar/mover na hora quanto pra "Atualizar Imagem
+    REM Selecionada" funcionar logo em seguida sem precisar clicar nela.
+    ThisComponent.CurrentController.select(oGraphic)
 End Sub
 
 REM Utilitário de depuração: lista os nomes dos TextGraphicObjects do Writer
@@ -213,4 +225,116 @@ Sub InserirNoImpressOuDraw(sEmfPath As String, sId As String, dWidthMM As Double
 
     oShape.Size = TamanhoDoGrafico(dWidthMM, dHeightMM)
     oShape.Position = oPos
+
+    ThisComponent.CurrentController.select(oShape)
+End Sub
+
+REM ------------------------------------------------------------------
+REM Fase 7: edição bidirecional. As duas macros abaixo trabalham em cima
+REM da forma selecionada no documento (a que InserirEstruturaQuimica deixou
+REM marcada com Name = id).
+REM ------------------------------------------------------------------
+
+REM Pega a forma única selecionada no documento, seja ela a seleção direta
+REM (comum no Writer quando só a imagem está selecionada) ou o primeiro item
+REM de uma coleção de seleção (comum no Impress/Draw). Devolve Nothing se
+REM não houver uma forma selecionada.
+Function PegarFormaSelecionada() As Object
+    Dim oSel As Object
+    Dim bEhForma As Boolean
+
+    On Error GoTo SemSelecao
+    oSel = ThisComponent.CurrentSelection
+    If IsNull(oSel) Then GoTo SemSelecao
+
+    bEhForma = False
+    If HasUnoInterfaces(oSel, "com.sun.star.lang.XServiceInfo") Then
+        bEhForma = oSel.supportsService("com.sun.star.text.TextGraphicObject") _
+            Or oSel.supportsService("com.sun.star.drawing.GraphicObjectShape")
+    End If
+
+    If bEhForma Then
+        PegarFormaSelecionada = oSel
+        Exit Function
+    End If
+
+    If oSel.Count >= 1 Then
+        PegarFormaSelecionada = oSel.getByIndex(0)
+        Exit Function
+    End If
+
+    SemSelecao:
+    PegarFormaSelecionada = Nothing
+End Function
+
+REM ------------------------------------------------------------------
+REM Editar Estrutura Química: com a imagem inserida pelo ChemDraw Linux
+REM selecionada, abre o app já carregado com o .ket correspondente.
+REM ------------------------------------------------------------------
+Sub EditarEstruturaQuimica
+    Dim oForma As Object
+    Dim sId As String
+    Dim sKetPath As String
+    Dim sLauncher As String
+
+    oForma = PegarFormaSelecionada()
+    If IsNull(oForma) Or IsEmpty(oForma) Then
+        MsgBox "Selecione primeiro uma estrutura inserida pelo ChemDraw Linux.", 48, "ChemDraw Linux"
+        Exit Sub
+    End If
+
+    sId = oForma.Name
+    If sId = "" Then
+        MsgBox "Essa imagem não tem um id do ChemDraw Linux (Name vazio) — provavelmente não foi inserida pela macro InserirEstruturaQuimica.", 48, "ChemDraw Linux"
+        Exit Sub
+    End If
+
+    sKetPath = ChemDrawExportDir() & "/" & sId & ".ket"
+    If Not FileExists(sKetPath) Then
+        MsgBox "Não achei " & sKetPath & "." & Chr(10) & _
+               "O arquivo pode ter sido movido ou apagado.", 48, "ChemDraw Linux"
+        Exit Sub
+    End If
+
+    sLauncher = ChemDrawLauncherPath()
+    If Not FileExists(sLauncher) Then
+        MsgBox "Não achei o launcher do ChemDraw Linux (" & sLauncher & ")." & Chr(10) & _
+               "Abra o ChemDraw Linux pelo menos uma vez pra ele gravar esse arquivo.", 48, "ChemDraw Linux"
+        Exit Sub
+    End If
+
+    Shell(sLauncher, 1, """" & sKetPath & """", False)
+End Sub
+
+REM ------------------------------------------------------------------
+REM Atualizar Imagem Selecionada: com a mesma imagem ainda selecionada
+REM (depois de editar e reexportar no ChemDraw Linux), troca só o conteúdo
+REM gráfico pelo .emf atualizado — mantém posição, tamanho e Name, não
+REM insere uma cópia nova.
+REM ------------------------------------------------------------------
+Sub AtualizarImagemSelecionada
+    Dim oForma As Object
+    Dim sId As String
+    Dim sEmfPath As String
+
+    oForma = PegarFormaSelecionada()
+    If IsNull(oForma) Or IsEmpty(oForma) Then
+        MsgBox "Selecione primeiro a estrutura que você quer atualizar.", 48, "ChemDraw Linux"
+        Exit Sub
+    End If
+
+    sId = oForma.Name
+    If sId = "" Then
+        MsgBox "Essa imagem não tem um id do ChemDraw Linux (Name vazio).", 48, "ChemDraw Linux"
+        Exit Sub
+    End If
+
+    sEmfPath = ChemDrawExportDir() & "/" & sId & ".emf"
+    If Not FileExists(sEmfPath) Then
+        MsgBox "Não achei " & sEmfPath & "." & Chr(10) & _
+               "Exporte de novo no ChemDraw Linux (Ctrl+E) antes de atualizar.", 48, "ChemDraw Linux"
+        Exit Sub
+    End If
+
+    oForma.Graphic = CarregarGrafico(sEmfPath)
 End Sub

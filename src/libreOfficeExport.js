@@ -72,10 +72,31 @@ function idFromKetPath(filePath) {
   return path.basename(resolved, '.ket');
 }
 
+const APP_DATA_DIR = path.join(os.homedir(), '.local', 'share', 'chemdraw-linux');
+const LAUNCHER_PATH = path.join(APP_DATA_DIR, 'open-ket.sh');
+
+// Escreve (ou atualiza) um script que a macro "Editar Estrutura Química" do
+// LibreOffice usa pra reabrir o app com um .ket específico — sem isso, a
+// macro Basic não teria como saber onde/como rodar o ChemDraw Linux.
+// Regenerado a cada início do app, então sempre aponta pra instalação atual
+// (útil em dev, onde a pasta do projeto pode mudar).
+function ensureLauncherScript(projectRoot) {
+  fs.mkdirSync(APP_DATA_DIR, { recursive: true });
+  const electronBin = path.join(projectRoot, 'node_modules', '.bin', 'electron');
+  const script =
+    `#!/bin/bash\n` +
+    `cd ${JSON.stringify(projectRoot)}\n` +
+    `exec env -u ELECTRON_RUN_AS_NODE ${JSON.stringify(electronBin)} . "$1"\n`;
+  fs.writeFileSync(LAUNCHER_PATH, script, { mode: 0o755 });
+  return LAUNCHER_PATH;
+}
+
 module.exports = {
   EXPORT_DIR,
+  LAUNCHER_PATH,
   exportForLibreOffice,
   readKetById,
   timestampId,
-  idFromKetPath
+  idFromKetPath,
+  ensureLauncherScript
 };

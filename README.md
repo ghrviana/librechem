@@ -9,11 +9,13 @@ Fedora), construído em cima do [Ketcher](https://github.com/epam/ketcher)
 
 ## Status
 
-Fases 1 (MVP), 2 (preset ACS), 3 (clipboard) e 6 (integração por arquivo +
-macro do LibreOffice) concluídas e validadas. Fase 4 (UI customizada) foi
-pulada por enquanto a pedido do usuário — a integração por arquivo/macro
-(Fase 6/7) ficou mais prioritária depois que a colagem via clipboard se
-mostrou inconsistente pra estruturas maiores.
+Fases 1 (MVP), 2 (preset ACS), 3 (clipboard), 6 (integração por arquivo +
+macro do LibreOffice) e 7 (edição bidirecional) concluídas e validadas.
+Fase 4 (UI customizada) foi pulada por enquanto a pedido do usuário — a
+integração por arquivo/macro (Fase 6/7) ficou mais prioritária depois que a
+colagem via clipboard se mostrou inconsistente pra estruturas maiores.
+Falta a Fase 5 (empacotamento) e empacotar a macro do LibreOffice como
+extensão `.oxt`.
 
 ## Requisitos
 
@@ -203,14 +205,32 @@ fica pra depois, como o roteiro original já previa.
 
 ### Edição bidirecional (Fase 7)
 
-Ainda não implementada. A base já está pronta: a forma inserida no
-documento tem `Name = <id>`, e existe `<id>.ket` correspondente na pasta de
-exports pra reabrir. Falta: a macro "Editar Estrutura Química" (lê o `Name`
-da forma selecionada, abre o ChemDraw Linux com esse `.ket`) e "Atualizar
-Imagem Selecionada" (substitui só o gráfico da forma já selecionada, sem
-duplicar). O ChemDraw Linux já sabe abrir um `.ket` passado por linha de
-comando e sobrescrever o mesmo par de arquivos ao exportar de novo (em vez
-de gerar um id novo), preparado pra quando essas macros existirem.
+Implementada e validada de ponta a ponta: desenhar → exportar → inserir no
+documento → editar → reexportar → atualizar a imagem já colada, sem
+duplicar e sem perder posição/tamanho.
+
+- **`open-ket.sh`**: script que o ChemDraw Linux grava (e atualiza) toda vez
+  que abre, em `~/.local/share/chemdraw-linux/open-ket.sh` — é como a macro
+  sabe relançar o app com um `.ket` específico, sem precisar de um caminho
+  fixo hardcoded (útil em dev, onde a pasta do projeto muda).
+- **Macro `EditarEstruturaQuimica`**: lê o `Name` (id) da forma selecionada
+  no documento, acha `<id>.ket` na pasta de exports e chama `open-ket.sh`
+  com esse arquivo via `Shell()`. O ChemDraw Linux abre já com a estrutura
+  carregada (precisou esperar `window.ketcher` existir antes de chamar
+  `setMolecule` — na primeira tentativa dava erro porque a página "carregada"
+  não significa que o Ketcher terminou de inicializar).
+- **Reexportar (`Ctrl+E`) durante essa edição**: sobrescreve o mesmo
+  `<id>.ket`/`<id>.emf` (usa o id do arquivo que foi aberto), em vez de criar
+  um novo — confirmado no diálogo ("Estrutura atualizada (id: ...)").
+- **Macro `AtualizarImagemSelecionada`**: com a mesma forma ainda selecionada
+  no documento (a inserção agora já deixa a forma selecionada
+  automaticamente), troca só a propriedade `Graphic` pelo `<id>.emf`
+  atualizado — posição, tamanho e `Name` continuam intocados, e não aparece
+  uma segunda imagem.
+- Interceptar duplo-clique na imagem (hoje abre as propriedades padrão do
+  LibreOffice) continua adiado, como o plano original previa — o fluxo via
+  seleção + macro (atalho de teclado ou Ferramentas > Macros) já cobre o
+  essencial.
 
 ## Roteiro
 
@@ -220,4 +240,4 @@ de gerar um id novo), preparado pra quando essas macros existirem.
 4. **UI customizada** — layout estilo ChemDraw (paleta à esquerda, status bar). _(pulada por enquanto)_
 5. **Empacotamento** — AppImage, depois `.deb` e `.rpm`/Flatpak.
 6. ✅ **Integração por arquivo + macro do LibreOffice** — botão "Exportar para LibreOffice" (.ket + .emf + latest.json) e macro `InserirEstruturaQuimica`, testados em Writer e Impress. Falta empacotar a macro como extensão `.oxt`.
-7. **Edição bidirecional** — macros "Editar Estrutura Química" e "Atualizar Imagem Selecionada", usando o `Name` da forma e o `id` rastreável já implementados. _(próxima)_
+7. ✅ **Edição bidirecional** — macros `EditarEstruturaQuimica` e `AtualizarImagemSelecionada`, validadas de ponta a ponta (editar → reexportar → atualizar sem duplicar). Falta só interceptar duplo-clique na imagem (adiado, refinamento futuro).
