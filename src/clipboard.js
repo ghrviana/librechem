@@ -18,6 +18,7 @@
 
 const { clipboard, ClipboardItem } = require('electron');
 const { spawn, execFileSync } = require('child_process');
+const { addSvgMargin } = require('./svgUtils');
 
 function commandExists(cmd) {
   try {
@@ -58,7 +59,7 @@ function writeSvgToClipboard(svgText) {
       if (code === 0) resolve();
       else reject(new Error(`${tool} saiu com código ${code}${stderr ? `: ${stderr.trim()}` : ''}`));
     });
-    proc.stdin.write(svgText);
+    proc.stdin.write(addSvgMargin(svgText));
     proc.stdin.end();
   });
 }

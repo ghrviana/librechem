@@ -9,6 +9,7 @@ const { execFile } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { addSvgMargin } = require('./svgUtils');
 
 function convertSvgToEmf(svgText) {
   return new Promise((resolve, reject) => {
@@ -20,7 +21,7 @@ function convertSvgToEmf(svgText) {
       return;
     }
     const svgPath = path.join(tmpDir, 'structure.svg');
-    fs.writeFileSync(svgPath, svgText, 'utf8');
+    fs.writeFileSync(svgPath, addSvgMargin(svgText), 'utf8');
 
     execFile(
       'soffice',
