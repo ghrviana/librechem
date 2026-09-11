@@ -232,6 +232,25 @@ duplicar e sem perder posição/tamanho.
   seleção + macro (atalho de teclado ou Ferramentas > Macros) já cobre o
   essencial.
 
+### Bug encontrado usando de verdade: id vazando entre estruturas diferentes
+
+Reportado pelo usuário: inseriu uma primeira estrutura (funcionou), depois
+inseriu uma segunda no mesmo documento e, ao tentar editá-la, o LibreOffice
+reclamou de não achar `Figura2.ket`. Causa: `currentExportId` (usado pra
+saber se um export deve sobrescrever o par de arquivos existente) só era
+setado depois de exportar, mas **nunca resetado** ao limpar a tela — "Novo",
+"Limpar Estrutura" e trocar de preset (Estilo) só davam `reload()` na
+janela. Resultado: desenhar uma estrutura nova na mesma janela e exportar
+sobrescrevia o `.ket`/`.emf` da estrutura ANTERIOR com o conteúdo da nova
+(mesmo id), e ao inserir de novo no documento, o `Name` já estava em uso
+pela primeira imagem — o LibreOffice recusa nomes duplicados e cai pra um
+nome automático (`Figura2`), que a macro não reconhece.
+
+Corrigido: `startNewStructure()` centraliza reload + `currentExportId = null`,
+usado por "Novo", "Limpar Estrutura" e troca de preset. Validado reproduzindo
+o cenário exato (exportar → limpar → desenhar outra coisa → exportar de
+novo) e confirmando que os dois ids saem diferentes.
+
 ## Roteiro
 
 1. ✅ **MVP** — Electron básico embutindo o Ketcher.

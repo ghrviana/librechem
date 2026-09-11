@@ -171,6 +171,17 @@ async function exportStructureAsEmf() {
   }
 }
 
+// "Novo"/"Limpar Estrutura" têm que resetar currentExportId — senão o
+// próximo "Exportar para LibreOffice" continua sobrescrevendo o id da
+// estrutura ANTERIOR (a que estava na tela antes de limpar) com o conteúdo
+// da estrutura nova, e a inserção no documento esbarra num Name já usado
+// por outra imagem, fazendo o LibreOffice trocar por um nome automático
+// tipo "Figura2" — foi exatamente o bug relatado.
+function startNewStructure() {
+  currentExportId = null;
+  mainWindow.webContents.reload();
+}
+
 // Fase 6/7: exporta .ket + .emf pra pasta que a macro do LibreOffice lê
 // (ver src/libreOfficeExport.js). Se currentExportId já estiver setado
 // (a estrutura foi aberta a partir de uma exportação anterior, via a macro
@@ -213,9 +224,9 @@ function buildMenu() {
     {
       label: 'Arquivo',
       submenu: [
-        { label: 'Novo', accelerator: 'CmdOrCtrl+N', click: () => mainWindow.webContents.reload() },
+        { label: 'Novo', accelerator: 'CmdOrCtrl+N', click: () => startNewStructure() },
         { type: 'separator' },
-        { label: 'Recarregar Ketcher', accelerator: 'CmdOrCtrl+Shift+R', click: () => mainWindow.webContents.reload() },
+        { label: 'Recarregar Ketcher', accelerator: 'CmdOrCtrl+Shift+R', click: () => startNewStructure() },
         { type: 'separator' },
         { label: 'Sair', role: 'quit' }
       ]
@@ -249,7 +260,7 @@ function buildMenu() {
       submenu: [
         {
           label: 'Limpar Estrutura',
-          click: () => mainWindow.webContents.reload()
+          click: () => startNewStructure()
         },
         { type: 'separator' },
         {
@@ -284,7 +295,7 @@ function buildMenu() {
           checked: p.id === activeId,
           click: () => {
             presets.saveActivePresetId(app.getPath('userData'), p.id);
-            mainWindow.webContents.reload();
+            startNewStructure();
           }
         }));
       })()
@@ -409,6 +420,35 @@ async function createWindow() {
             process.env.CHEMDRAW_TEST_EXPORT,
             JSON.stringify({ ok: false, error: err.message }, null, 2)
           );
+        }
+      }
+      if (process.env.CHEMDRAW_TEST_CLEAR_BUG) {
+        try {
+          const result1 = await exportToLibreOfficeCore();
+          startNewStructure();
+          await new Promise((r) => setTimeout(r, 1500));
+          await mainWindow.webContents.executeJavaScript(`(async () => {
+            for (let i = 0; i < 100 && !window.ketcher; i++) {
+              await new Promise((r) => setTimeout(r, 100));
+            }
+            await window.ketcher.setMolecule('C1CCCCC1');
+          })()`);
+          await new Promise((r) => setTimeout(r, 1000));
+          const result2 = await exportToLibreOfficeCore();
+          fs.writeFileSync(
+            process.env.CHEMDRAW_TEST_CLEAR_BUG,
+            JSON.stringify(
+              {
+                id1: result1.latest.id,
+                id2: result2.latest.id,
+                sameId: result1.latest.id === result2.latest.id
+              },
+              null,
+              2
+            )
+          );
+        } catch (err) {
+          fs.writeFileSync(process.env.CHEMDRAW_TEST_CLEAR_BUG, 'ERROR: ' + err.message);
         }
       }
       if (process.env.CHEMDRAW_TEST_COPY) {
