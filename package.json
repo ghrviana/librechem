@@ -1,0 +1,46 @@
+{
+  "name": "chemdraw-linux",
+  "productName": "ChemDraw Linux",
+  "version": "0.1.0",
+  "description": "Editor de estruturas químicas 2D estilo ChemDraw, baseado no Ketcher (EPAM), para Zorin OS e Fedora.",
+  "private": true,
+  "license": "UNLICENSED",
+  "main": "src/main.js",
+  "scripts": {
+    "postinstall": "node scripts/fetch-ketcher.js",
+    "fetch-ketcher": "node scripts/fetch-ketcher.js",
+    "start": "electron .",
+    "dist:appimage": "electron-builder --linux AppImage",
+    "dist:deb": "electron-builder --linux deb",
+    "dist:rpm": "electron-builder --linux rpm",
+    "dist:all": "electron-builder --linux AppImage deb rpm"
+  },
+  "devDependencies": {
+    "electron": "44.3.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "org.ghrviana.chemdrawlinux",
+    "productName": "ChemDraw Linux",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "vendor/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "src/main.js"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
+      "category": "Science",
+      "icon": "build/icons"
+    }
+  }
+}
