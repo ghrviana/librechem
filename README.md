@@ -9,7 +9,11 @@ Fedora), construído em cima do [Ketcher](https://github.com/epam/ketcher)
 
 ## Status
 
-Fases 1 (MVP), 2 (preset ACS) e 3 (clipboard) concluídas e validadas.
+Fases 1 (MVP), 2 (preset ACS), 3 (clipboard) e 6 (integração por arquivo +
+macro do LibreOffice) concluídas e validadas. Fase 4 (UI customizada) foi
+pulada por enquanto a pedido do usuário — a integração por arquivo/macro
+(Fase 6/7) ficou mais prioritária depois que a colagem via clipboard se
+mostrou inconsistente pra estruturas maiores.
 
 ## Requisitos
 
@@ -50,6 +54,9 @@ npm run fetch-ketcher
   "Presets de estilo").
 - `src/clipboard.js` e `src/emfExport.js`: cópia da estrutura pro
   clipboard e exportação EMF (ver seção "Copiar e colar no LibreOffice").
+- `src/libreOfficeExport.js` e `libreoffice-macro/`: integração por arquivo
+  com o LibreOffice (ver seção "Integração por arquivo + macro do
+  LibreOffice").
 
 ## Presets de estilo
 
@@ -130,10 +137,87 @@ gerado de volta pra PNG e comparando visualmente.
 | EMF via clipboard | ❌ Não (testado com 4 mime types) | — | Mesmo problema |
 | EMF via arquivo + Inserir > Imagem | ✅ Sim (import manual) | ✅ Sim | Único caminho vetorial validado |
 
+## Integração por arquivo + macro do LibreOffice (Fase 6)
+
+Como a colagem via clipboard (seção anterior) se mostrou pouco confiável —
+principalmente por não ser vetorial de verdade sem um passo manual — a Fase
+6 troca isso por um fluxo baseado em arquivo, mais previsível:
+
+1. No ChemDraw Linux: **Estrutura > Exportar para LibreOffice (.ket + .emf)**
+   (`Ctrl+E`). Isso salva em `~/.local/share/chemdraw-linux/exports/`:
+   - `<id>.ket` — a estrutura no formato nativo do Ketcher, pra reabrir e
+     editar depois. `<id>` é um timestamp (`AAAA-MM-DD_HH-MM-SS`).
+   - `<id>.emf` — a mesma estrutura em EMF (vetorial), já com a margem
+     corrigida (ver Fase 3/commit "Corrige corte nas bordas...").
+   - `latest.json` — `{"id", "ket", "emf", "widthMM", "heightMM"}`, sempre
+     apontando pra exportação mais recente. A macro do LibreOffice só lê
+     esse arquivo, não precisa varrer a pasta.
+2. No LibreOffice: a macro **InserirEstruturaQuimica** (ver
+   `libreoffice-macro/ChemDrawLinux.bas`) lê `latest.json` e insere o `.emf`
+   no documento atual — em Writer, ancorado como caractere na posição do
+   cursor; em Impress/Draw, como uma forma no slide atual. A forma inserida
+   recebe `Name = <id>`, que é a base pra edição bidirecional (Fase 7).
+
+### Tamanho da imagem inserida
+
+As unidades do SVG que o Ketcher gera **não correspondem a nenhum DPI
+fixo** — não são pixels reais de tela. Tentamos duas abordagens que não
+funcionaram bem:
+- Ler `SizePixel`/`Size100thMM` de volta do gráfico já importado no
+  LibreOffice: o importador de SVG do LibreOffice também não assume 96dpi,
+  então o tamanho resultante vinha ~4x maior que o esperado.
+- Assumir 96dpi nós mesmos ao calcular a partir do SVG: mesmo problema,
+  porque a suposição errada é justamente essa.
+
+O que funciona: o ChemDraw Linux fixa uma largura padrão razoável (60mm)
+pra estrutura inserida e calcula a altura preservando a proporção
+largura/altura do SVG (essa proporção é confiável, mesmo sem saber a escala
+real) — grava isso em `widthMM`/`heightMM` no `latest.json`, e a macro usa
+esses valores diretamente, sem tentar reintroduzir a escala a partir do
+gráfico já inserido.
+
+### Instalar a macro
+
+```bash
+./libreoffice-macro/install.sh
+```
+
+Copia `ChemDrawLinux.bas` para a biblioteca "Standard" das Minhas Macros do
+LibreOffice (feche o LibreOffice antes de rodar). Depois, no LibreOffice:
+Ferramentas > Macros > Executar macro > Minhas Macros > Standard >
+ChemDrawLinux > `InserirEstruturaQuimica` — ou associe a um atalho de
+teclado em Ferramentas > Personalizar > Teclado (procure por
+"ChemDrawLinux").
+
+Testado invocando a macro diretamente via linha de comando (mais confiável
+que automatizar clique de menu):
+
+```bash
+soffice "vnd.sun.star.script:Standard.ChemDrawLinux.InserirEstruturaQuimica?language=Basic&location=application"
+```
+
+Validado no Writer (inserido como caractere ancorado, tamanho e proporção
+corretos) e no Impress (inserido como forma no slide atual). Empacotar como
+extensão `.oxt` instalável com um clique (em vez de rodar o `install.sh`)
+fica pra depois, como o roteiro original já previa.
+
+### Edição bidirecional (Fase 7)
+
+Ainda não implementada. A base já está pronta: a forma inserida no
+documento tem `Name = <id>`, e existe `<id>.ket` correspondente na pasta de
+exports pra reabrir. Falta: a macro "Editar Estrutura Química" (lê o `Name`
+da forma selecionada, abre o ChemDraw Linux com esse `.ket`) e "Atualizar
+Imagem Selecionada" (substitui só o gráfico da forma já selecionada, sem
+duplicar). O ChemDraw Linux já sabe abrir um `.ket` passado por linha de
+comando e sobrescrever o mesmo par de arquivos ao exportar de novo (em vez
+de gerar um id novo), preparado pra quando essas macros existirem.
+
 ## Roteiro
 
 1. ✅ **MVP** — Electron básico embutindo o Ketcher.
 2. ✅ **Preset ACS** — parâmetros de renderização (ACS Document 1996).
 3. ✅ **Clipboard** — copiar estrutura como PNG (padrão) ou exportar EMF (vetor) pro LibreOffice.
-4. **UI customizada** — layout estilo ChemDraw (paleta à esquerda, status bar). _(próxima)_
+4. **UI customizada** — layout estilo ChemDraw (paleta à esquerda, status bar). _(pulada por enquanto)_
 5. **Empacotamento** — AppImage, depois `.deb` e `.rpm`/Flatpak.
+6. ✅ **Integração por arquivo + macro do LibreOffice** — botão "Exportar para LibreOffice" (.ket + .emf + latest.json) e macro `InserirEstruturaQuimica`, testados em Writer e Impress. Falta empacotar a macro como extensão `.oxt`.
+7. **Edição bidirecional** — macros "Editar Estrutura Química" e "Atualizar Imagem Selecionada", usando o `Name` da forma e o `id` rastreável já implementados. _(próxima)_

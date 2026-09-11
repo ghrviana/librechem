@@ -7,6 +7,7 @@ const fs = require('fs');
 const presets = require('./presets');
 const clipboardBridge = require('./clipboard');
 const emfExport = require('./emfExport');
+const libreOfficeExport = require('./libreOfficeExport');
 
 const KETCHER_DIR = path.join(__dirname, '..', 'vendor', 'ketcher');
 
@@ -28,6 +29,17 @@ const MIME_TYPES = {
 let server = null;
 let serverBaseUrl = null;
 let mainWindow = null;
+
+// Se o app foi aberto com um .ket exportado antes (a macro "Editar estrutura
+// química" do LibreOffice faz isso — ver Fase 7), carrega esse arquivo ao
+// iniciar e lembra o id pra "Exportar para LibreOffice" sobrescrever o
+// mesmo par de arquivos em vez de criar um novo.
+let currentExportId = null;
+let pendingKetToLoad = null;
+
+function findKetArgToOpen(argv) {
+  return argv.find((arg) => arg.endsWith('.ket') && fs.existsSync(arg));
+}
 
 // Injeta o preset de estilo ativo (ex.: ACS Document 1996) como o `ketcher-opts`
 // que o Ketcher lê do localStorage ao inicializar. Roda antes do bundle da
@@ -159,6 +171,43 @@ async function exportStructureAsEmf() {
   }
 }
 
+// Fase 6/7: exporta .ket + .emf pra pasta que a macro do LibreOffice lê
+// (ver src/libreOfficeExport.js). Se currentExportId já estiver setado
+// (a estrutura foi aberta a partir de uma exportação anterior, via a macro
+// "Editar estrutura química"), sobrescreve o mesmo par de arquivos — assim
+// a imagem já colada no documento aponta pro conteúdo atualizado.
+async function exportToLibreOfficeCore() {
+  const { svgText, ketText } = await mainWindow.webContents.executeJavaScript(`(async () => {
+    const struct = await window.ketcher.getKet();
+    const blob = await window.ketcher.generateImage(struct, { outputFormat: 'svg' });
+    return { svgText: await blob.text(), ketText: struct };
+  })()`);
+
+  const wasExisting = Boolean(currentExportId);
+  const latest = await libreOfficeExport.exportForLibreOffice(svgText, ketText, currentExportId);
+  currentExportId = latest.id;
+  return { latest, wasExisting };
+}
+
+async function exportToLibreOffice() {
+  try {
+    const { latest, wasExisting } = await exportToLibreOfficeCore();
+
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Exportado para o LibreOffice',
+      message: wasExisting
+        ? `Estrutura atualizada (id: ${latest.id}).`
+        : `Estrutura exportada (id: ${latest.id}).`,
+      detail:
+        'No LibreOffice, rode a macro "Inserir Estrutura Química" (Writer/Impress) ' +
+        'para colar no documento.'
+    });
+  } catch (err) {
+    dialog.showErrorBox('Erro ao exportar para o LibreOffice', String((err && err.message) || err));
+  }
+}
+
 function buildMenu() {
   const template = [
     {
@@ -216,6 +265,11 @@ function buildMenu() {
         {
           label: 'Exportar como EMF (vetor editável no LibreOffice)...',
           click: () => exportStructureAsEmf()
+        },
+        {
+          label: 'Exportar para LibreOffice (.ket + .emf)',
+          accelerator: 'CmdOrCtrl+E',
+          click: () => exportToLibreOffice()
         }
       ]
     },
@@ -306,6 +360,17 @@ async function createWindow() {
 
   await mainWindow.loadURL(serverBaseUrl);
 
+  if (pendingKetToLoad) {
+    try {
+      await mainWindow.webContents.executeJavaScript(
+        `window.ketcher.setMolecule(${JSON.stringify(pendingKetToLoad)})`
+      );
+    } catch (err) {
+      dialog.showErrorBox('Erro ao abrir estrutura', String((err && err.message) || err));
+    }
+    pendingKetToLoad = null;
+  }
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -324,6 +389,20 @@ async function createWindow() {
           await new Promise((r) => setTimeout(r, 1500));
         } catch (err) {
           console.error('[CHEMDRAW_TEST_SMILES] erro ao setar molécula:', err);
+        }
+      }
+      if (process.env.CHEMDRAW_TEST_EXPORT) {
+        try {
+          const { latest, wasExisting } = await exportToLibreOfficeCore();
+          fs.writeFileSync(
+            process.env.CHEMDRAW_TEST_EXPORT,
+            JSON.stringify({ ok: true, latest, wasExisting }, null, 2)
+          );
+        } catch (err) {
+          fs.writeFileSync(
+            process.env.CHEMDRAW_TEST_EXPORT,
+            JSON.stringify({ ok: false, error: err.message }, null, 2)
+          );
         }
       }
       if (process.env.CHEMDRAW_TEST_COPY) {
@@ -353,6 +432,12 @@ ipcMain.handle('chemdraw:copy-svg', async (_event, svgText) => {
 ipcMain.handle('chemdraw:copy-png', async (_event, base64Png) => {
   await clipboardBridge.writePngToClipboard(base64Png);
 });
+
+const ketArg = findKetArgToOpen(process.argv);
+if (ketArg) {
+  pendingKetToLoad = fs.readFileSync(ketArg, 'utf8');
+  currentExportId = libreOfficeExport.idFromKetPath(ketArg);
+}
 
 app.whenReady().then(createWindow);
 

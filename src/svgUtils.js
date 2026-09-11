@@ -33,4 +33,28 @@ function addSvgMargin(svgText, margin) {
     );
 }
 
-module.exports = { addSvgMargin };
+// Largura padrão (mm) pra estruturas inseridas no LibreOffice — ver
+// getPaddedSizeMM.
+const DEFAULT_WIDTH_MM = 60;
+
+// Tamanho (mm) pra inserir o EMF no LibreOffice. As unidades do SVG que o
+// Ketcher gera não são pixels reais a nenhum DPI fixo (é uma escala interna
+// abstrata — tentamos 96dpi antes e deu um resultado ~4x maior que o
+// esperado), então não dá pra converter direto pra mm. O que É confiável é
+// a proporção largura/altura do SVG, então fixamos uma largura padrão
+// razoável pra uma estrutura pequena e calculamos a altura a partir dela
+// — evita distorcer, mesmo sem saber a escala real.
+function getPaddedSizeMM(svgText, margin) {
+  const padded = addSvgMargin(svgText, margin);
+  const widthMatch = padded.match(/width="([\d.]+)"/);
+  const heightMatch = padded.match(/height="([\d.]+)"/);
+  if (!widthMatch || !heightMatch) return null;
+
+  const width = parseFloat(widthMatch[1]);
+  const height = parseFloat(heightMatch[1]);
+  const widthMM = DEFAULT_WIDTH_MM;
+  const heightMM = DEFAULT_WIDTH_MM * (height / width);
+  return { widthMM, heightMM };
+}
+
+module.exports = { addSvgMargin, getPaddedSizeMM };
