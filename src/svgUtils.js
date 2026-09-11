@@ -7,7 +7,7 @@
 // esquerda/direita da estrutura. Como a margem só expande o viewBox pra
 // fora (sem mover nada dentro dele), dá pra corrigir sem precisar entender
 // a estrutura interna do SVG.
-function addSvgMargin(svgText, margin = 15) {
+function addSvgMargin(svgText, margin) {
   const widthMatch = svgText.match(/width="([\d.]+)"/);
   const heightMatch = svgText.match(/height="([\d.]+)"/);
   const viewBoxMatch = svgText.match(/viewBox="([\d.\s-]+)"/);
@@ -16,6 +16,13 @@ function addSvgMargin(svgText, margin = 15) {
   const width = parseFloat(widthMatch[1]);
   const height = parseFloat(heightMatch[1]);
   const [vx, vy, vw, vh] = viewBoxMatch[1].trim().split(/\s+/).map(Number);
+
+  // Margem fixa não escala: um valor que sobra numa estrutura pequena corta
+  // rótulo em uma maior. Proporcional ao maior lado, com um piso pra
+  // estruturas bem pequenas.
+  if (margin === undefined) {
+    margin = Math.max(25, Math.round(0.08 * Math.max(width, height)));
+  }
 
   return svgText
     .replace(`width="${widthMatch[1]}"`, `width="${width + margin * 2}"`)
