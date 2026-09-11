@@ -9,13 +9,14 @@ Fedora), construído em cima do [Ketcher](https://github.com/epam/ketcher)
 
 ## Status
 
-Fases 1 (MVP), 2 (preset ACS), 3 (clipboard), 6 (integração por arquivo +
-macro do LibreOffice) e 7 (edição bidirecional) concluídas e validadas.
-Fase 4 (UI customizada) foi pulada por enquanto a pedido do usuário — a
-integração por arquivo/macro (Fase 6/7) ficou mais prioritária depois que a
-colagem via clipboard se mostrou inconsistente pra estruturas maiores.
-Falta a Fase 5 (empacotamento) e empacotar a macro do LibreOffice como
-extensão `.oxt`.
+Fases 1 (MVP), 2 (preset ACS), 3 (clipboard) e 6 (integração por arquivo +
+macro do LibreOffice) concluídas e validadas. Fase 4 (UI customizada) foi
+pulada por enquanto a pedido do usuário — a integração por arquivo/macro
+(Fase 6/7) ficou mais prioritária depois que a colagem via clipboard se
+mostrou inconsistente pra estruturas maiores. A Fase 7 (edição bidirecional)
+tem um **bug em aberto com múltiplas figuras** (ver seção própria mais
+abaixo) — é o próximo ponto a retomar. Falta também a Fase 5
+(empacotamento) e empacotar a macro do LibreOffice como extensão `.oxt`.
 
 ## Requisitos
 
@@ -251,6 +252,20 @@ usado por "Novo", "Limpar Estrutura" e troca de preset. Validado reproduzindo
 o cenário exato (exportar → limpar → desenhar outra coisa → exportar de
 novo) e confirmando que os dois ids saem diferentes.
 
+**Esse fix não resolveu tudo**: o usuário testou de novo e, com uma segunda
+estrutura inserida no mesmo documento, editar a segunda ainda reabre a
+primeira. Ou seja, tem pelo menos mais um bug — provavelmente em como a
+macro identifica "qual forma está selecionada"
+(`PegarFormaSelecionada`/`EditarEstruturaQuimica` em
+`libreoffice-macro/ChemDrawLinux.bas`), não só no lado do app. **Próxima
+etapa**: o fluxo de trabalho real do usuário precisa suportar **múltiplas
+figuras inseridas e editadas em momentos diferentes**, de forma
+independente — não só "a exportação mais recente" (`latest.json`) ou "a
+sessão atual do app" (`currentExportId`). Antes de tentar corrigir de novo,
+instrumentar a macro pra confirmar exatamente qual forma/Name ela resolve
+quando a 2ª figura (não a 1ª) está selecionada, em vez de adivinhar mais uma
+correção.
+
 ## Roteiro
 
 1. ✅ **MVP** — Electron básico embutindo o Ketcher.
@@ -259,4 +274,4 @@ novo) e confirmando que os dois ids saem diferentes.
 4. **UI customizada** — layout estilo ChemDraw (paleta à esquerda, status bar). _(pulada por enquanto)_
 5. **Empacotamento** — AppImage, depois `.deb` e `.rpm`/Flatpak.
 6. ✅ **Integração por arquivo + macro do LibreOffice** — botão "Exportar para LibreOffice" (.ket + .emf + latest.json) e macro `InserirEstruturaQuimica`, testados em Writer e Impress. Falta empacotar a macro como extensão `.oxt`.
-7. ✅ **Edição bidirecional** — macros `EditarEstruturaQuimica` e `AtualizarImagemSelecionada`, validadas de ponta a ponta (editar → reexportar → atualizar sem duplicar). Falta só interceptar duplo-clique na imagem (adiado, refinamento futuro).
+7. ⚠️ **Edição bidirecional** — macros `EditarEstruturaQuimica` e `AtualizarImagemSelecionada` implementadas e funcionam para uma figura por documento, mas **editar a 2ª figura inserida ainda reabre a 1ª** (bug em aberto — ver seção "Bug encontrado..." acima). Falta suportar múltiplas figuras independentes, inseridas/editadas em momentos diferentes, além de interceptar duplo-clique na imagem (adiado). _(retomar aqui)_
