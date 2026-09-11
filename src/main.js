@@ -1,10 +1,12 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
 const presets = require('./presets');
+const clipboardBridge = require('./clipboard');
+const emfExport = require('./emfExport');
 
 const KETCHER_DIR = path.join(__dirname, '..', 'vendor', 'ketcher');
 
@@ -83,6 +85,80 @@ function startStaticServer() {
   });
 }
 
+// Pega a estrutura atual do Ketcher, gera a imagem (SVG ou PNG) no próprio
+// renderer (via window.ketcher.generateImage) e manda pro clipboard do
+// sistema através do preload (chemdraw:copy-svg / chemdraw:copy-png).
+function copyScriptFor(format) {
+  return format === 'svg'
+    ? `(async () => {
+        const struct = await window.ketcher.getKet();
+        const blob = await window.ketcher.generateImage(struct, { outputFormat: 'svg' });
+        const text = await blob.text();
+        await window.chemdraw.copyStructureSvg(text);
+      })()`
+    : `(async () => {
+        const struct = await window.ketcher.getKet();
+        const blob = await window.ketcher.generateImage(struct, { outputFormat: 'png' });
+        const buf = await blob.arrayBuffer();
+        let binary = '';
+        const bytes = new Uint8Array(buf);
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        await window.chemdraw.copyStructurePng(btoa(binary));
+      })()`;
+}
+
+async function copyStructureCore(format) {
+  await mainWindow.webContents.executeJavaScript(copyScriptFor(format));
+}
+
+async function copyStructureAs(format) {
+  try {
+    await copyStructureCore(format);
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Copiado',
+      message:
+        format === 'svg'
+          ? 'Estrutura copiada como SVG (vetor) para a área de transferência.'
+          : 'Estrutura copiada como PNG (alta resolução) para a área de transferência.'
+    });
+  } catch (err) {
+    dialog.showErrorBox('Erro ao copiar estrutura', String((err && err.message) || err));
+  }
+}
+
+// Exporta a estrutura atual como EMF (via soffice headless), alternativa
+// vetorial pra quando o PNG do clipboard não for suficiente: o usuário
+// importa o .emf manualmente com Inserir > Imagem no Writer/Impress.
+async function exportStructureAsEmf() {
+  try {
+    const svgText = await mainWindow.webContents.executeJavaScript(`(async () => {
+      const struct = await window.ketcher.getKet();
+      const blob = await window.ketcher.generateImage(struct, { outputFormat: 'svg' });
+      return await blob.text();
+    })()`);
+
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Exportar estrutura como EMF',
+      defaultPath: 'estrutura.emf',
+      filters: [{ name: 'Windows Metafile (EMF)', extensions: ['emf'] }]
+    });
+    if (canceled || !filePath) return;
+
+    const emfBuffer = await emfExport.convertSvgToEmf(svgText);
+    fs.writeFileSync(filePath, emfBuffer);
+
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Exportado',
+      message: `Estrutura exportada como EMF em:\n${filePath}`,
+      detail: 'No LibreOffice, use Inserir > Imagem para colar como objeto vetorial editável.'
+    });
+  } catch (err) {
+    dialog.showErrorBox('Erro ao exportar EMF', String((err && err.message) || err));
+  }
+}
+
 function buildMenu() {
   const template = [
     {
@@ -125,6 +201,21 @@ function buildMenu() {
         {
           label: 'Limpar Estrutura',
           click: () => mainWindow.webContents.reload()
+        },
+        { type: 'separator' },
+        {
+          label: 'Copiar como Imagem (SVG) para LibreOffice',
+          accelerator: 'CmdOrCtrl+Shift+C',
+          click: () => copyStructureAs('svg')
+        },
+        {
+          label: 'Copiar como Imagem (PNG alta resolução)',
+          click: () => copyStructureAs('png')
+        },
+        { type: 'separator' },
+        {
+          label: 'Exportar como EMF (vetor editável no LibreOffice)...',
+          click: () => exportStructureAsEmf()
         }
       ]
     },
@@ -235,12 +326,33 @@ async function createWindow() {
           console.error('[CHEMDRAW_TEST_SMILES] erro ao setar molécula:', err);
         }
       }
+      if (process.env.CHEMDRAW_TEST_COPY) {
+        const { clipboard } = require('electron');
+        try {
+          await copyStructureCore(process.env.CHEMDRAW_TEST_COPY);
+          const items = await clipboard.read();
+          fs.writeFileSync(
+            process.env.CHEMDRAW_COPY_VERIFY,
+            JSON.stringify({ types: items.map((i) => i.types) }, null, 2)
+          );
+        } catch (err) {
+          fs.writeFileSync(process.env.CHEMDRAW_COPY_VERIFY, 'ERROR: ' + err.message);
+        }
+      }
       const image = await mainWindow.webContents.capturePage();
       fs.writeFileSync(outPath, image.toPNG());
       app.quit();
     }, 2000);
   }
 }
+
+ipcMain.handle('chemdraw:copy-svg', async (_event, svgText) => {
+  await clipboardBridge.writeSvgToClipboard(svgText);
+});
+
+ipcMain.handle('chemdraw:copy-png', async (_event, base64Png) => {
+  await clipboardBridge.writePngToClipboard(base64Png);
+});
 
 app.whenReady().then(createWindow);
 

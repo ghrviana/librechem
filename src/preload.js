@@ -1,4 +1,11 @@
 'use strict';
 
-// Ponte entre o processo main e o Ketcher embutido. Vazio por enquanto
-// (Fase 1 - MVP); vai ganhar a API de clipboard (SVG/PNG) na Fase 3.
+// Ponte entre o processo main e o Ketcher embutido: expõe só o necessário
+// pra Fase 3 (copiar estrutura como imagem pro LibreOffice).
+
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('chemdraw', {
+  copyStructureSvg: (svgText) => ipcRenderer.invoke('chemdraw:copy-svg', svgText),
+  copyStructurePng: (base64Png) => ipcRenderer.invoke('chemdraw:copy-png', base64Png)
+});
