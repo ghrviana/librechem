@@ -1,0 +1,14 @@
+[
+  {
+    "id": "acs-1996",
+    "label": "ACS Document 1996",
+    "file": "acs-1996.json",
+    "description": "Aproxima os parâmetros de renderização do guia ACS Document 1996 (comprimento/espessura de ligação, fonte e tamanho de rótulos, cunhas de estereoquímica em unidades de impressão)."
+  },
+  {
+    "id": "default",
+    "label": "Padrão (Ketcher)",
+    "file": "default.json",
+    "description": "Configurações padrão de fábrica do Ketcher, em pixels de tela."
+  }
+]

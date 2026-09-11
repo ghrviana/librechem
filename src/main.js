@@ -4,6 +4,7 @@ const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
+const presets = require('./presets');
 
 const KETCHER_DIR = path.join(__dirname, '..', 'vendor', 'ketcher');
 
@@ -26,6 +27,18 @@ let server = null;
 let serverBaseUrl = null;
 let mainWindow = null;
 
+// Injeta o preset de estilo ativo (ex.: ACS Document 1996) como o `ketcher-opts`
+// que o Ketcher lê do localStorage ao inicializar. Roda antes do bundle da
+// aplicação (script normal, não `defer`) para garantir que já esteja em vigor
+// quando o Ketcher iniciar.
+function injectActivePreset(html) {
+  const activeId = presets.loadActivePresetId(app.getPath('userData'));
+  const opts = presets.loadPresetOpts(activeId);
+  const script =
+    `<script>try{localStorage.setItem('ketcher-opts', ${JSON.stringify(JSON.stringify(opts))});}catch(e){}</script>`;
+  return html.replace('<head>', '<head>' + script);
+}
+
 function startStaticServer() {
   return new Promise((resolve, reject) => {
     server = http.createServer((req, res) => {
@@ -43,6 +56,12 @@ function startStaticServer() {
         if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
           // SPA fallback: rotas desconhecidas caem no index.html.
           filePath = path.join(KETCHER_DIR, 'index.html');
+        }
+
+        if (path.basename(filePath) === 'index.html') {
+          res.writeHead(200, { 'Content-Type': MIME_TYPES['.html'] });
+          res.end(injectActivePreset(fs.readFileSync(filePath, 'utf8')));
+          return;
         }
 
         const ext = path.extname(filePath).toLowerCase();
@@ -108,6 +127,22 @@ function buildMenu() {
           click: () => mainWindow.webContents.reload()
         }
       ]
+    },
+    {
+      label: 'Estilo',
+      submenu: (() => {
+        const manifest = presets.loadManifest();
+        const activeId = presets.loadActivePresetId(app.getPath('userData'));
+        return manifest.map((p) => ({
+          label: p.label,
+          type: 'radio',
+          checked: p.id === activeId,
+          click: () => {
+            presets.saveActivePresetId(app.getPath('userData'), p.id);
+            mainWindow.webContents.reload();
+          }
+        }));
+      })()
     },
     {
       label: 'Texto',
