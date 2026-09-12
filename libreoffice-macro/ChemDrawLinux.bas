@@ -217,15 +217,39 @@ REM ChemDraw Linux (a partir do SVG original, a 96dpi) — tentar ler de volta
 REM o tamanho "real" do gráfico já importado (SizePixel/Size100thMM) dá
 REM valores errados, porque o importador de SVG do LibreOffice não assume
 REM 96dpi pras unidades sem sufixo do SVG.
-Function TamanhoDoGrafico(dWidthMM As Double, dHeightMM As Double) As Object
+REM oGrafico é opcional: usado só como reserva quando não há
+REM widthMM/heightMM confiável (ex.: exportações de antes da Biblioteca de
+REM Estruturas existir, sem sidecar <id>.json). A escala ABSOLUTA lida de
+REM volta de Size100thMM não é confiável (a conversão SVG→EMF introduz um
+REM desvio de ~2% na própria proporção, medido na prática), mas ainda assim
+REM é muito melhor que um tamanho fixo arbitrário quando é tudo que se tem.
+Function TamanhoDoGrafico(dWidthMM As Double, dHeightMM As Double, Optional oGrafico As Object) As Object
     Dim oSize As New com.sun.star.awt.Size
+    Dim oTamGrafico As Object
+    Dim dRazao As Double
+
     If dWidthMM > 0 And dHeightMM > 0 Then
         oSize.Width = Int(dWidthMM * 100)
         oSize.Height = Int(dHeightMM * 100)
-    Else
-        oSize.Width = 8000
-        oSize.Height = 5000
+        TamanhoDoGrafico = oSize
+        Exit Function
     End If
+
+    If Not IsMissing(oGrafico) Then
+        On Error Resume Next
+        oTamGrafico = oGrafico.Size100thMM
+        If Not IsNull(oTamGrafico) And oTamGrafico.Width > 0 And oTamGrafico.Height > 0 Then
+            dRazao = oTamGrafico.Height / oTamGrafico.Width
+            oSize.Width = 6000 ' 60mm padrão, mesma largura que o ChemDraw Linux usa por padrão
+            oSize.Height = Int(6000 * dRazao)
+            TamanhoDoGrafico = oSize
+            Exit Function
+        End If
+        On Error GoTo 0
+    End If
+
+    oSize.Width = 8000
+    oSize.Height = 5000
     TamanhoDoGrafico = oSize
 End Function
 
@@ -275,7 +299,7 @@ Sub InserirNoWriter(sEmfPath As String, sId As String, dWidthMM As Double, dHeig
     oGraphic.AnchorType = com.sun.star.text.TextContentAnchorType.AS_CHARACTER
     oGraphic.Name = sId
 
-    oSize = TamanhoDoGrafico(dWidthMM, dHeightMM)
+    oSize = TamanhoDoGrafico(dWidthMM, dHeightMM, oGraphic.Graphic)
     oGraphic.Width = oSize.Width
     oGraphic.Height = oSize.Height
 
@@ -322,7 +346,7 @@ Sub InserirNoImpressOuDraw(sEmfPath As String, sId As String, dWidthMM As Double
     oPos.X = 2000
     oPos.Y = 2000
 
-    oShape.Size = TamanhoDoGrafico(dWidthMM, dHeightMM)
+    oShape.Size = TamanhoDoGrafico(dWidthMM, dHeightMM, oShape.Graphic)
     oShape.Position = oPos
 
     ThisComponent.CurrentController.select(oShape)
@@ -407,14 +431,21 @@ End Sub
 
 REM ------------------------------------------------------------------
 REM Atualizar Imagem Selecionada: com a mesma imagem ainda selecionada
-REM (depois de editar e reexportar no ChemDraw Linux), troca só o conteúdo
-REM gráfico pelo .emf atualizado — mantém posição, tamanho e Name, não
-REM insere uma cópia nova.
+REM (depois de editar e reexportar no ChemDraw Linux), troca o conteúdo
+REM gráfico pelo .emf atualizado — mantém posição, largura e Name, não
+REM insere uma cópia nova. A altura É recalculada (mantendo a largura atual)
+REM pra bater com a proporção da estrutura editada, que pode ter mudado
+REM desde a última exportação (ex.: editar adicionou/removeu átomos) — sem
+REM isso, a moldura antiga distorcia o desenho novo.
 REM ------------------------------------------------------------------
 Sub AtualizarImagemSelecionada
     Dim oForma As Object
     Dim sId As String
     Dim sEmfPath As String
+    Dim oNovoGrafico As Object
+    Dim aExp As Variant
+    Dim oTamGrafico As Object
+    Dim dRazao As Double
 
     oForma = PegarFormaSelecionada()
     If IsNull(oForma) Or IsEmpty(oForma) Then
@@ -435,7 +466,25 @@ Sub AtualizarImagemSelecionada
         Exit Sub
     End If
 
-    oForma.Graphic = CarregarGrafico(sEmfPath)
+    oNovoGrafico = CarregarGrafico(sEmfPath)
+    oForma.Graphic = oNovoGrafico
+
+    dRazao = 0
+    aExp = LerExportacaoPorId(sId)
+    If aExp(0) <> "" And aExp(3) > 0 And aExp(4) > 0 Then
+        REM widthMM/heightMM calculados pelo Node.js a partir do SVG — mais
+        REM precisos que reler o tamanho do próprio .emf já convertido.
+        dRazao = aExp(4) / aExp(3)
+    Else
+        On Error Resume Next
+        oTamGrafico = oNovoGrafico.Size100thMM
+        If Not IsNull(oTamGrafico) And oTamGrafico.Width > 0 Then
+            dRazao = oTamGrafico.Height / oTamGrafico.Width
+        End If
+        On Error GoTo 0
+    End If
+
+    If dRazao > 0 Then oForma.Height = Int(oForma.Width * dRazao)
 End Sub
 
 REM ------------------------------------------------------------------
