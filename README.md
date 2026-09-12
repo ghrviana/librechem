@@ -9,14 +9,13 @@ Fedora), construído em cima do [Ketcher](https://github.com/epam/ketcher)
 
 ## Status
 
-Fases 1 (MVP), 2 (preset ACS), 3 (clipboard) e 6 (integração por arquivo +
-macro do LibreOffice) concluídas e validadas. Fase 4 (UI customizada) foi
+Fases 1 (MVP), 2 (preset ACS), 3 (clipboard), 6 (integração por arquivo +
+macro do LibreOffice) e 7 (edição bidirecional, com suporte real a múltiplas
+figuras independentes) concluídas e validadas. Fase 4 (UI customizada) foi
 pulada por enquanto a pedido do usuário — a integração por arquivo/macro
 (Fase 6/7) ficou mais prioritária depois que a colagem via clipboard se
-mostrou inconsistente pra estruturas maiores. A Fase 7 (edição bidirecional)
-tem um **bug em aberto com múltiplas figuras** (ver seção própria mais
-abaixo) — é o próximo ponto a retomar. Falta também a Fase 5
-(empacotamento) e empacotar a macro do LibreOffice como extensão `.oxt`.
+mostrou inconsistente pra estruturas maiores. Falta a Fase 5 (empacotamento)
+e empacotar a macro do LibreOffice como extensão `.oxt`.
 
 ## Requisitos
 
@@ -233,38 +232,54 @@ duplicar e sem perder posição/tamanho.
   seleção + macro (atalho de teclado ou Ferramentas > Macros) já cobre o
   essencial.
 
-### Bug encontrado usando de verdade: id vazando entre estruturas diferentes
+### Bugs encontrados usando de verdade com múltiplas figuras (resolvidos)
 
-Reportado pelo usuário: inseriu uma primeira estrutura (funcionou), depois
-inseriu uma segunda no mesmo documento e, ao tentar editá-la, o LibreOffice
-reclamou de não achar `Figura2.ket`. Causa: `currentExportId` (usado pra
-saber se um export deve sobrescrever o par de arquivos existente) só era
-setado depois de exportar, mas **nunca resetado** ao limpar a tela — "Novo",
-"Limpar Estrutura" e trocar de preset (Estilo) só davam `reload()` na
-janela. Resultado: desenhar uma estrutura nova na mesma janela e exportar
-sobrescrevia o `.ket`/`.emf` da estrutura ANTERIOR com o conteúdo da nova
-(mesmo id), e ao inserir de novo no documento, o `Name` já estava em uso
-pela primeira imagem — o LibreOffice recusa nomes duplicados e cai pra um
-nome automático (`Figura2`), que a macro não reconhece.
+Validar a Fase 7 só com uma figura por documento escondeu dois bugs
+distintos, que só apareceram testando o fluxo real (inserir e editar várias
+figuras independentes, em momentos diferentes). Achados por instrumentação
+(log na macro e no app) em vez de tentativa e erro — cada um tinha uma causa
+bem específica:
 
-Corrigido: `startNewStructure()` centraliza reload + `currentExportId = null`,
-usado por "Novo", "Limpar Estrutura" e troca de preset. Validado reproduzindo
-o cenário exato (exportar → limpar → desenhar outra coisa → exportar de
-novo) e confirmando que os dois ids saem diferentes.
+**1. `currentExportId` não resetava ao limpar pelo botão do próprio
+Ketcher.** `startNewStructure()` (que zera `currentExportId` e recarrega a
+janela) só era chamado pelos itens do menu nativo do app ("Novo", "Limpar
+Estrutura", trocar preset). O ícone "Clear Canvas" da própria barra de
+desenho do Ketcher — o que o usuário realmente usa no dia a dia — não passa
+por ali, então o app continuava achando que a próxima exportação era uma
+atualização da estrutura anterior, sobrescrevendo o `.ket`/`.emf` errado (o
+`Name` já em uso fazia o LibreOffice cair pra um nome automático tipo
+`Figura2`, que a macro não reconhece).
 
-**Esse fix não resolveu tudo**: o usuário testou de novo e, com uma segunda
-estrutura inserida no mesmo documento, editar a segunda ainda reabre a
-primeira. Ou seja, tem pelo menos mais um bug — provavelmente em como a
-macro identifica "qual forma está selecionada"
-(`PegarFormaSelecionada`/`EditarEstruturaQuimica` em
-`libreoffice-macro/ChemDrawLinux.bas`), não só no lado do app. **Próxima
-etapa**: o fluxo de trabalho real do usuário precisa suportar **múltiplas
-figuras inseridas e editadas em momentos diferentes**, de forma
-independente — não só "a exportação mais recente" (`latest.json`) ou "a
-sessão atual do app" (`currentExportId`). Antes de tentar corrigir de novo,
-instrumentar a macro pra confirmar exatamente qual forma/Name ela resolve
-quando a 2ª figura (não a 1ª) está selecionada, em vez de adivinhar mais uma
-correção.
+Corrigido em `src/main.js` (`watchCanvasCleared`): o app monitora
+`window.ketcher.getSmiles()` por polling (a cada 800ms) e, ao detectar a
+transição não-vazio → vazio (canvas ficou vazio, não importa qual botão foi
+usado pra limpar), avisa o processo principal via IPC
+(`chemdraw:canvas-cleared`) pra resetar `currentExportId` — do mesmo jeito
+que "Novo"/"Limpar Estrutura" já faziam.
+
+**2. O preview do Ketcher (a "sombra" da forma seguindo o mouse) entrava na
+exportação.** Com uma ferramenta de anel/template selecionada, o Ketcher
+mostra um preview visual da forma enquanto o mouse passa sobre a área de
+desenho — só um efeito visual, nunca deveria virar estrutura de verdade. Só
+que `window.ketcher.getKet()` capturava esse preview junto com a estrutura
+real sempre que `Ctrl+E` era apertado com o mouse sobre o canvas, exportando
+as duas moléculas juntas (confirmado abrindo o `.ket` gerado: tinha `mol0` e
+`mol1`; um único `Ctrl+Z` removia as duas de uma vez, e o problema não
+acontecia com o mouse fora da área de desenho).
+
+Corrigido em `src/main.js` (`clearHoverPreviewAndWait`): antes de qualquer
+leitura de `getKet()` (cópia pro clipboard, exportar EMF, exportar pro
+LibreOffice), o app move o mouse de verdade pra fora da área de desenho via
+`webContents.sendInputEvent` (evento nativo, não um evento sintético de DOM,
+pra garantir que o Ketcher realmente reaja) e espera um instante antes de
+ler a estrutura.
+
+Os dois foram encontrados descartando hipóteses por instrumentação — dump de
+`getSmiles()` ao longo do tempo, contagem de `GraphicObjects` antes/depois
+da inserção, reconversão do `.emf` de volta pra PNG pra inspecionar visualmente,
+e inspeção direta do `.ket` gerado — em vez de tentar corrigir "no escuro".
+Validado de ponta a ponta com múltiplas figuras inseridas e editadas em
+momentos diferentes no mesmo documento.
 
 ## Roteiro
 
@@ -274,4 +289,4 @@ correção.
 4. **UI customizada** — layout estilo ChemDraw (paleta à esquerda, status bar). _(pulada por enquanto)_
 5. **Empacotamento** — AppImage, depois `.deb` e `.rpm`/Flatpak.
 6. ✅ **Integração por arquivo + macro do LibreOffice** — botão "Exportar para LibreOffice" (.ket + .emf + latest.json) e macro `InserirEstruturaQuimica`, testados em Writer e Impress. Falta empacotar a macro como extensão `.oxt`.
-7. ⚠️ **Edição bidirecional** — macros `EditarEstruturaQuimica` e `AtualizarImagemSelecionada` implementadas e funcionam para uma figura por documento, mas **editar a 2ª figura inserida ainda reabre a 1ª** (bug em aberto — ver seção "Bug encontrado..." acima). Falta suportar múltiplas figuras independentes, inseridas/editadas em momentos diferentes, além de interceptar duplo-clique na imagem (adiado). _(retomar aqui)_
+7. ✅ **Edição bidirecional** — macros `EditarEstruturaQuimica` e `AtualizarImagemSelecionada`, com suporte real a múltiplas figuras independentes inseridas/editadas em momentos diferentes no mesmo documento (ver seção "Bugs encontrados..." acima). Interceptar duplo-clique na imagem continua adiado (o fluxo via seleção + macro já cobre o essencial).

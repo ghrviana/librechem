@@ -7,5 +7,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('chemdraw', {
   copyStructureSvg: (svgText) => ipcRenderer.invoke('chemdraw:copy-svg', svgText),
-  copyStructurePng: (base64Png) => ipcRenderer.invoke('chemdraw:copy-png', base64Png)
+  copyStructurePng: (base64Png) => ipcRenderer.invoke('chemdraw:copy-png', base64Png),
+  notifyCanvasCleared: () => ipcRenderer.send('chemdraw:canvas-cleared')
 });

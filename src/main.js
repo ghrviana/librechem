@@ -97,6 +97,25 @@ function startStaticServer() {
   });
 }
 
+// Bug encontrado testando múltiplas figuras: o Ketcher mostra uma "sombra"
+// (preview) da forma que vai ser desenhada quando o mouse passa por cima da
+// área de desenho com uma ferramenta de anel/template selecionada — é só
+// visual, não devia contar como estrutura de verdade. Só que
+// window.ketcher.getKet() lê esse preview junto com a estrutura real
+// enquanto o mouse está sobre o canvas, exportando as duas moléculas juntas
+// (validado: Ctrl+Z depois removia as duas de uma vez só, e o problema não
+// acontecia se o mouse estivesse fora da área de desenho). Mover o mouse de
+// verdade (via sendInputEvent, não um evento sintético de DOM) pra fora do
+// canvas antes de ler getKet() força esse preview a sumir.
+async function clearHoverPreviewAndWait() {
+  try {
+    mainWindow.webContents.sendInputEvent({ type: 'mouseMove', x: 0, y: 0 });
+  } catch (err) {
+    // não deve impedir a exportação se isso falhar
+  }
+  await new Promise((resolve) => setTimeout(resolve, 80));
+}
+
 // Pega a estrutura atual do Ketcher, gera a imagem (SVG ou PNG) no próprio
 // renderer (via window.ketcher.generateImage) e manda pro clipboard do
 // sistema através do preload (chemdraw:copy-svg / chemdraw:copy-png).
@@ -120,6 +139,7 @@ function copyScriptFor(format) {
 }
 
 async function copyStructureCore(format) {
+  await clearHoverPreviewAndWait();
   await mainWindow.webContents.executeJavaScript(copyScriptFor(format));
 }
 
@@ -144,6 +164,7 @@ async function copyStructureAs(format) {
 // importa o .emf manualmente com Inserir > Imagem no Writer/Impress.
 async function exportStructureAsEmf() {
   try {
+    await clearHoverPreviewAndWait();
     const svgText = await mainWindow.webContents.executeJavaScript(`(async () => {
       const struct = await window.ketcher.getKet();
       const blob = await window.ketcher.generateImage(struct, { outputFormat: 'svg' });
@@ -182,12 +203,37 @@ function startNewStructure() {
   mainWindow.webContents.reload();
 }
 
+// Complementa startNewStructure(): fica de olho (via polling de getSmiles())
+// em o canvas do Ketcher ficar vazio, o que também acontece quando o usuário
+// usa o ícone "Clear Canvas" da própria barra de desenho do Ketcher — ação
+// que não passa pelo menu nativo do app, então startNewStructure() nunca
+// seria chamado só por causa dela. Ao detectar a transição não-vazio →
+// vazio, avisa o processo main (via chemdraw:canvas-cleared) pra resetar
+// currentExportId, do mesmo jeito que "Novo"/"Limpar Estrutura" fazem.
+function watchCanvasCleared() {
+  mainWindow.webContents
+    .executeJavaScript(
+      `(() => {
+        let wasEmpty = true;
+        setInterval(async () => {
+          try {
+            const isEmpty = !(await window.ketcher.getSmiles());
+            if (isEmpty && !wasEmpty) window.chemdraw.notifyCanvasCleared();
+            wasEmpty = isEmpty;
+          } catch (e) {}
+        }, 800);
+      })()`
+    )
+    .catch(() => {});
+}
+
 // Fase 6/7: exporta .ket + .emf pra pasta que a macro do LibreOffice lê
 // (ver src/libreOfficeExport.js). Se currentExportId já estiver setado
 // (a estrutura foi aberta a partir de uma exportação anterior, via a macro
 // "Editar estrutura química"), sobrescreve o mesmo par de arquivos — assim
 // a imagem já colada no documento aponta pro conteúdo atualizado.
 async function exportToLibreOfficeCore() {
+  await clearHoverPreviewAndWait();
   const { svgText, ketText } = await mainWindow.webContents.executeJavaScript(`(async () => {
     const struct = await window.ketcher.getKet();
     const blob = await window.ketcher.generateImage(struct, { outputFormat: 'svg' });
@@ -371,22 +417,31 @@ async function createWindow() {
 
   await mainWindow.loadURL(serverBaseUrl);
 
+  try {
+    // window.ketcher só existe depois que o próprio Ketcher termina de
+    // inicializar — carregar a URL não é suficiente, precisa esperar.
+    await mainWindow.webContents.executeJavaScript(`(async () => {
+      for (let i = 0; i < 100 && !window.ketcher; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      if (!window.ketcher) throw new Error('Ketcher não inicializou a tempo.');
+    })()`);
+  } catch (err) {
+    dialog.showErrorBox('Erro ao inicializar', String((err && err.message) || err));
+  }
+
   if (pendingKetToLoad) {
     try {
-      // window.ketcher só existe depois que o próprio Ketcher termina de
-      // inicializar — carregar a URL não é suficiente, precisa esperar.
-      await mainWindow.webContents.executeJavaScript(`(async () => {
-        for (let i = 0; i < 100 && !window.ketcher; i++) {
-          await new Promise((r) => setTimeout(r, 100));
-        }
-        if (!window.ketcher) throw new Error('Ketcher não inicializou a tempo.');
-        await window.ketcher.setMolecule(${JSON.stringify(pendingKetToLoad)});
-      })()`);
+      await mainWindow.webContents.executeJavaScript(
+        `window.ketcher.setMolecule(${JSON.stringify(pendingKetToLoad)})`
+      );
     } catch (err) {
       dialog.showErrorBox('Erro ao abrir estrutura', String((err && err.message) || err));
     }
     pendingKetToLoad = null;
   }
+
+  watchCanvasCleared();
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -477,6 +532,17 @@ ipcMain.handle('chemdraw:copy-svg', async (_event, svgText) => {
 
 ipcMain.handle('chemdraw:copy-png', async (_event, base64Png) => {
   await clipboardBridge.writePngToClipboard(base64Png);
+});
+
+// Ver watchCanvasCleared(): o Ketcher tem seu próprio ícone "Clear Canvas"
+// na barra de desenho, que não passa pelo menu nativo do app — então
+// startNewStructure() (chamado por "Novo"/"Limpar Estrutura") não é
+// acionado por ele. Sem resetar currentExportId aqui também, o próximo
+// "Exportar para LibreOffice" sobrescrevia o .ket/.emf da estrutura
+// ANTERIOR com o conteúdo da nova (bug real: editar uma figura já inserida
+// sempre reabria a mais recente, não a que estava selecionada).
+ipcMain.on('chemdraw:canvas-cleared', () => {
+  currentExportId = null;
 });
 
 const ketArg = findKetArgToOpen(process.argv);
