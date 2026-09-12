@@ -202,6 +202,16 @@ O `Addons.xcu` restringe onde o menu aparece via a propriedade `Context`
 (`com.sun.star.text.TextDocument,com.sun.star.presentation.PresentationDocument`)
 — por isso Writer e Impress, não Calc/Draw.
 
+**Se a interface estiver no modo "Abas" (Notebookbar/Tabbed)** — a faixa com
+Início/Inserir/Leiaute em vez do menu clássico Arquivo/Editar/Exibir — o
+menu "ChemDraw Linux" continua registrado, só que não vira uma aba nova:
+ele fica dentro do menu clássico, acessível pelo botão **"Menu"** (ícone ☰
+no canto superior direito da faixa). Clicar nele abre a lista completa
+(Arquivo, Editar, ..., Ferramentas, **ChemDraw Linux**, Janela, Ajuda).
+Confirmado inspecionando via AT-SPI uma janela real nesse modo. Pra ter o
+menu como aba de topo direto, mude pra "Barra de Menu Padrão" em Exibir >
+Interface do Usuário.
+
 **Gotcha real encontrado testando** (não documentado em lugar nenhum
 óbvio): uma biblioteca Basic empacotada num `.oxt` precisa de um
 `dialog.xlb` ao lado do `script.xlb`, mesmo que a extensão não tenha
