@@ -264,6 +264,22 @@ soffice "vnd.sun.star.script:Standard.ChemDrawLinux.AbrirBibliotecaEstruturas?la
 - Validado de ponta a ponta com as 27 estruturas acumuladas nas sessões de
   teste anteriores.
 
+**Distorção de proporção (resolvida)**: usando de verdade, `Atualizar Imagem
+Selecionada` e a inserção de estruturas antigas (sem sidecar) esticavam o
+desenho fora de proporção. Causas: `AtualizarImagemSelecionada` trocava só o
+`Graphic`, mantendo a moldura (`Width`/`Height`) da imagem ANTERIOR — se a
+edição mudou a proporção da molécula, a moldura antiga não batia mais; e
+`TamanhoDoGrafico` caía num tamanho fixo (80×50mm) quando não havia
+`widthMM`/`heightMM` salvo. Corrigido: `AtualizarImagemSelecionada` agora
+recalcula a altura (mantendo a largura atual, inclusive se redimensionada
+manualmente) usando o `widthMM`/`heightMM` do sidecar; `TamanhoDoGrafico`
+usa a proporção do próprio gráfico (`Size100thMM`) como reserva antes do
+fallback fixo. Importante: a escala **absoluta** lida de volta do gráfico
+não é confiável (~2% de desvio até na proporção, medido na prática, por
+causa da conversão SVG→EMF) — por isso sempre prioriza o `widthMM`/`heightMM`
+calculado pelo Node.js quando disponível, só usando a razão do gráfico como
+último recurso.
+
 ### Bugs encontrados usando de verdade com múltiplas figuras (resolvidos)
 
 Validar a Fase 7 só com uma figura por documento escondeu dois bugs
