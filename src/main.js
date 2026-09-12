@@ -8,6 +8,7 @@ const presets = require('./presets');
 const clipboardBridge = require('./clipboard');
 const emfExport = require('./emfExport');
 const libreOfficeExport = require('./libreOfficeExport');
+const exportsLibrary = require('./exportsLibrary');
 
 const KETCHER_DIR = path.join(__dirname, '..', 'vendor', 'ketcher');
 
@@ -304,6 +305,109 @@ async function exportToLibreOffice() {
   }
 }
 
+// Exporta toda a Biblioteca de Estruturas (~/.local/share/chemdraw-linux/exports/)
+// num único .zip, pra levar pra outro computador (ver exportsLibrary.js).
+async function exportStructureLibrary() {
+  try {
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Exportar Biblioteca de Estruturas',
+      defaultPath: path.join(app.getPath('home'), `chemdraw-biblioteca-${libreOfficeExport.timestampId()}.zip`),
+      filters: [{ name: 'Arquivo ZIP', extensions: ['zip'] }]
+    });
+    if (canceled || !filePath) return;
+
+    const { count } = await exportsLibrary.exportLibraryToZip(filePath);
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Biblioteca exportada',
+      message: `${count} estrutura(s) exportada(s) em:\n${filePath}`,
+      detail:
+        'Leve esse arquivo pro outro computador e use Estrutura > Biblioteca de Estruturas > ' +
+        'Importar Biblioteca de Estruturas para trazer as estruturas de volta.'
+    });
+  } catch (err) {
+    dialog.showErrorBox('Erro ao exportar Biblioteca de Estruturas', String((err && err.message) || err));
+  }
+}
+
+// Importa um .zip gerado por exportStructureLibrary (dessa máquina ou de
+// outra) — nunca sobrescreve estruturas que já existam localmente.
+async function importStructureLibrary() {
+  try {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: 'Importar Biblioteca de Estruturas',
+      properties: ['openFile'],
+      filters: [{ name: 'Arquivo ZIP', extensions: ['zip'] }]
+    });
+    if (canceled || !filePaths || !filePaths[0]) return;
+
+    const { imported, skipped } = await exportsLibrary.importLibraryFromZip(filePaths[0]);
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Biblioteca importada',
+      message:
+        `${imported} estrutura(s) importada(s).` +
+        (skipped > 0 ? `\n${skipped} já existiam localmente e foram ignoradas.` : '')
+    });
+  } catch (err) {
+    dialog.showErrorBox('Erro ao importar Biblioteca de Estruturas', String((err && err.message) || err));
+  }
+}
+
+// Apaga o histórico de exportações, com confirmação — oferece exportar um
+// backup antes, já que é uma ação destrutiva e irreversível.
+async function clearExportHistoryWithConfirm() {
+  let totalKet = 0;
+  try {
+    totalKet = fs.readdirSync(libreOfficeExport.EXPORT_DIR).filter((n) => n.endsWith('.ket')).length;
+  } catch {
+    totalKet = 0;
+  }
+
+  if (totalKet === 0) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Nada para limpar',
+      message: 'Não há estruturas exportadas ainda.'
+    });
+    return;
+  }
+
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    title: 'Limpar Histórico de Exportações',
+    message: `Isso vai apagar as ${totalKet} estrutura(s) exportada(s) permanentemente.`,
+    detail:
+      'Estruturas já coladas em documentos do LibreOffice não são afetadas — só a Biblioteca ' +
+      'de Estruturas e o histórico local. Não dá pra desfazer depois de limpar.',
+    buttons: ['Cancelar', 'Exportar backup e limpar', 'Limpar sem backup'],
+    defaultId: 0,
+    cancelId: 0
+  });
+  if (response === 0) return;
+
+  try {
+    if (response === 1) {
+      const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+        title: 'Exportar backup antes de limpar',
+        defaultPath: path.join(app.getPath('home'), `chemdraw-biblioteca-backup-${libreOfficeExport.timestampId()}.zip`),
+        filters: [{ name: 'Arquivo ZIP', extensions: ['zip'] }]
+      });
+      if (canceled || !filePath) return; // desistiu do backup: cancela a limpeza também, por segurança
+      await exportsLibrary.exportLibraryToZip(filePath);
+    }
+
+    const { count } = exportsLibrary.clearExportHistory();
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Histórico limpo',
+      message: `${count} estrutura(s) removida(s).`
+    });
+  } catch (err) {
+    dialog.showErrorBox('Erro ao limpar Histórico de Exportações', String((err && err.message) || err));
+  }
+}
+
 function buildMenu() {
   const template = [
     {
@@ -366,6 +470,25 @@ function buildMenu() {
           label: 'Exportar para LibreOffice (.ket + .emf)',
           accelerator: 'CmdOrCtrl+E',
           click: () => exportToLibreOffice()
+        },
+        { type: 'separator' },
+        {
+          label: 'Biblioteca de Estruturas',
+          submenu: [
+            {
+              label: 'Exportar Biblioteca de Estruturas (.zip)...',
+              click: () => exportStructureLibrary()
+            },
+            {
+              label: 'Importar Biblioteca de Estruturas (.zip)...',
+              click: () => importStructureLibrary()
+            },
+            { type: 'separator' },
+            {
+              label: 'Limpar Histórico de Exportações...',
+              click: () => clearExportHistoryWithConfirm()
+            }
+          ]
         }
       ]
     },

@@ -21,7 +21,9 @@ do próprio app ChemDraw Linux: AppImage, depois `.deb`/`.rpm`/Flatpak).
 ## Requisitos
 
 - Node.js 20+ e npm
-- `unzip` disponível no PATH (usado para extrair o build do Ketcher)
+- `zip` e `unzip` disponíveis no PATH (`unzip` usado para extrair o build do
+  Ketcher; `zip`/`unzip` juntos usados para exportar/importar a Biblioteca de
+  Estruturas)
 - `xclip` (sessões X11) ou `wl-clipboard`/`wl-copy` (sessões Wayland) — necessário
   para copiar a estrutura como SVG. Instale com `sudo apt install xclip` ou
   `sudo apt install wl-clipboard`.
@@ -350,6 +352,42 @@ não é confiável (~2% de desvio até na proporção, medido na prática, por
 causa da conversão SVG→EMF) — por isso sempre prioriza o `widthMM`/`heightMM`
 calculado pelo Node.js quando disponível, só usando a razão do gráfico como
 último recurso.
+
+### Exportar, importar e limpar a Biblioteca de Estruturas
+
+O histórico de exportações (`~/.local/share/chemdraw-linux/exports/`) fica
+só na máquina local — não sincroniza em nenhum lugar. Pra levar as
+estruturas pra outro computador, ou pra limpar o histórico acumulado, use
+o menu **Estrutura > Biblioteca de Estruturas** no ChemDraw Linux (não na
+macro do LibreOffice):
+
+- **Exportar Biblioteca de Estruturas (.zip)...**: empacota tudo (todos os
+  `.ket`/`.emf`/`.json`) num único `.zip`, escolhido via diálogo "Salvar
+  como". Leve esse arquivo pra outro computador com ChemDraw Linux
+  instalado.
+- **Importar Biblioteca de Estruturas (.zip)...**: escolhe um `.zip`
+  gerado pela opção acima (dessa máquina ou de outra) e extrai pra dentro
+  da pasta de exports local. Nunca sobrescreve uma estrutura que já exista
+  localmente — como o id de cada estrutura é um timestamp, uma "colisão"
+  só aconteceria se duas exportações tivessem sido feitas no mesmíssimo
+  segundo em máquinas diferentes. O `latest.json` do `.zip` importado é
+  ignorado de propósito: cada máquina mantém seu próprio "latest" (a
+  exportação mais recente feita NELA), não a de quem gerou o `.zip` — as
+  estruturas importadas ficam disponíveis pela Biblioteca de Estruturas
+  (que varre todos os `.ket`), não pelo `InserirEstruturaQuimica` direto.
+- **Limpar Histórico de Exportações...**: apaga todas as estruturas
+  exportadas localmente. Ação destrutiva e sem desfazer — por isso pede
+  confirmação e oferece **exportar um backup automaticamente antes de
+  limpar** (mesmo fluxo da opção acima, só que disparado de dentro da
+  confirmação). Não afeta estruturas já coladas em documentos do
+  LibreOffice — só a Biblioteca de Estruturas e o histórico local.
+
+Implementado em `src/exportsLibrary.js`, usando os binários `zip`/`unzip`
+(já exigidos pelo projeto) em vez de uma dependência npm nova. Validado com
+as 31 estruturas reais acumuladas nas sessões de teste anteriores: exportar
+→ limpar → importar → importar de novo (confirma que não duplica nada na
+segunda importação) fecha o ciclo completo sem perder nem duplicar
+nenhuma estrutura.
 
 ### Bugs encontrados usando de verdade com múltiplas figuras (resolvidos)
 
