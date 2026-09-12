@@ -292,10 +292,20 @@ ajuda quando você quer inserir uma estrutura de momentos (ou dias) atrás, ou
 inserir a mesma estrutura em documentos diferentes (ex.: uma no Writer, outra
 no Impress). A macro **`AbrirBibliotecaEstruturas`** cobre esse caso: abre um
 diálogo flutuante dentro do próprio LibreOffice com miniaturas de até 16
-estruturas já exportadas (mais recentes primeiro) — clicar numa insere ela no
-documento atual e fecha o diálogo; "Fechar" só fecha sem inserir nada.
-Parecido com o seletor de referências do Zotero, mas pra estruturas
-químicas.
+estruturas por vez (mais recentes primeiro), com **barra de rolagem
+vertical** pra percorrer todo o histórico de exportações — não só as mais
+recentes, importante pra trabalhos extensos com muitas estruturas
+acumuladas. Clicar numa miniatura insere ela no documento atual e fecha o
+diálogo; "Fechar" só fecha sem inserir nada. Parecido com o seletor de
+referências do Zotero, mas pra estruturas químicas.
+
+O diálogo cria só os 16 controles de miniatura visíveis por vez (não um
+controle por estrutura exportada) — rolar troca o que cada um mostra
+(gráfico, rótulo, id), em vez de criar/mover controles. Escala bem mesmo com
+centenas de exportações acumuladas, sem deixar o diálogo lento nem maior
+que a tela (o tamanho fica sempre o de 16 miniaturas, 4×4; testado com um
+altura de janela de 6 linhas antes e ficou alto demais numa tela comum,
+invadindo a barra de tarefas — por isso o limite de 4 linhas visíveis).
 
 ```bash
 soffice "vnd.sun.star.script:Standard.ChemDrawLinux.AbrirBibliotecaEstruturas?language=Basic&location=application"

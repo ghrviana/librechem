@@ -17,6 +17,14 @@ REM precisam dela pra fechar o diálogo (endExecute) quando o usuário clica
 REM numa miniatura ou em "Fechar".
 Dim goBibliotecaDialog As Object
 
+REM Ids de todas as exportações (não só as visíveis) e quantidade de slots
+REM de miniatura criados no diálogo — usados por ChemDrawLibAtualizarSlots
+REM (chamada pelo listener de rolagem) pra saber o que carregar em cada
+REM slot. Os controles em si são fixos (não recriados a cada rolagem); só
+REM o conteúdo (Graphic/Label/HelpText) de cada slot muda.
+Dim goBibliotecaIds As Variant
+Dim goBibliotecaNumSlots As Integer
+
 Function ChemDrawExportDir() As String
     ChemDrawExportDir = Environ("HOME") & "/.local/share/chemdraw-linux/exports"
 End Function
@@ -495,22 +503,20 @@ REM Zotero. Clicar numa miniatura insere aquela estrutura e fecha o
 REM diálogo; "Fechar" só fecha sem inserir nada.
 REM ------------------------------------------------------------------
 Sub AbrirBibliotecaEstruturas
-    Dim aTodosIds As Variant
     Dim nTotalEncontrado As Integer
-    Dim nMostrar As Integer
     Dim oDialogModel As Object
-    Dim oImgModel As Object, oLabelModel As Object, oBotaoModel As Object
+    Dim oImgModel As Object, oLabelModel As Object, oBotaoModel As Object, oScrollModel As Object
     Dim i As Integer, iCol As Integer, iLin As Integer
-    Dim nColunas As Integer, nLinhas As Integer
-    Dim nTamImg As Integer, nCelW As Integer, nCelH As Integer, nMargem As Integer
+    Dim nColunas As Integer, nLinhasTotal As Integer, nLinhasVisiveis As Integer
+    Dim nTamImg As Integer, nCelW As Integer, nCelH As Integer, nMargem As Integer, nLarguraScroll As Integer
     Dim nX As Integer, nY As Integer
-    Dim aExp As Variant
-    Dim oListenerImg As Object, oListenerFechar As Object
-    Dim nAlturaGrade As Integer, nAlturaNota As Integer
+    Dim oListenerImg As Object, oListenerFechar As Object, oListenerScroll As Object
+    Dim nAlturaGrade As Integer
+    Dim bTemRolagem As Boolean
 
-    aTodosIds = ListarExportacoes()
+    goBibliotecaIds = ListarExportacoes()
     On Error Resume Next
-    nTotalEncontrado = UBound(aTodosIds) + 1
+    nTotalEncontrado = UBound(goBibliotecaIds) + 1
     On Error GoTo 0
     If nTotalEncontrado <= 0 Then
         MsgBox "Nenhuma estrutura exportada ainda." & Chr(10) & _
@@ -520,35 +526,38 @@ Sub AbrirBibliotecaEstruturas
     End If
 
     nColunas = 4
-    nMostrar = nTotalEncontrado
-    If nMostrar > 16 Then nMostrar = 16
-    nLinhas = Int((nMostrar - 1) / nColunas) + 1
+    nLinhasTotal = Int((nTotalEncontrado - 1) / nColunas) + 1
+    REM No máximo 4 linhas visíveis por vez (16 miniaturas na tela, o mesmo
+    REM tamanho de diálogo de antes — 6 linhas ficava alto demais e invadia
+    REM a barra de tarefas em telas comuns); acima disso, rola em vez de
+    REM crescer o diálogo indefinidamente — pensado pra bibliotecas grandes
+    REM (trabalhos extensos, centenas de exportações), sem criar um
+    REM controle por exportação (só os slots visíveis existem de verdade; o
+    REM conteúdo é trocado ao rolar, ver ChemDrawLibAtualizarSlots).
+    nLinhasVisiveis = nLinhasTotal
+    If nLinhasVisiveis > 4 Then nLinhasVisiveis = 4
+    bTemRolagem = (nLinhasTotal > nLinhasVisiveis)
+    goBibliotecaNumSlots = nColunas * nLinhasVisiveis
 
     nTamImg = 50
     nCelW = 60
     nCelH = 68
     nMargem = 8
-    nAlturaGrade = nLinhas * nCelH
-    nAlturaNota = 0
-    If nTotalEncontrado > nMostrar Then nAlturaNota = 14
+    nLarguraScroll = 12
+    nAlturaGrade = nLinhasVisiveis * nCelH
 
     oDialogModel = createUnoService("com.sun.star.awt.UnoControlDialogModel")
     oDialogModel.PositionX = 100
     oDialogModel.PositionY = 100
-    oDialogModel.Width = nMargem * 2 + nColunas * nCelW
-    oDialogModel.Height = nMargem * 2 + nAlturaGrade + nAlturaNota + 24
+    oDialogModel.Width = nMargem * 2 + nColunas * nCelW + nLarguraScroll
+    oDialogModel.Height = nMargem * 2 + nAlturaGrade + 14 + 20
     oDialogModel.Title = "Biblioteca de Estruturas — ChemDraw Linux"
 
-    For i = 0 To nMostrar - 1
+    For i = 0 To goBibliotecaNumSlots - 1
         iCol = i Mod nColunas
         iLin = Int(i / nColunas)
         nX = nMargem + iCol * nCelW
         nY = nMargem + iLin * nCelH
-
-        aExp = LerExportacaoPorId(aTodosIds(i))
-        REM Exportações antigas (de antes da Biblioteca existir) não têm
-        REM sidecar <id>.json — cai pro tamanho padrão de TamanhoDoGrafico.
-        If aExp(0) = "" Then aExp = Array(aTodosIds(i), "", ChemDrawExportDir() & "/" & aTodosIds(i) & ".emf", 0, 0)
 
         oImgModel = oDialogModel.createInstance("com.sun.star.awt.UnoControlImageControlModel")
         oImgModel.PositionX = nX
@@ -557,10 +566,7 @@ Sub AbrirBibliotecaEstruturas
         oImgModel.Height = nTamImg
         oImgModel.Border = 1
         oImgModel.ScaleImage = True
-        oImgModel.HelpText = aTodosIds(i) ' carrega o id pro listener de clique identificar qual foi clicada
-        On Error Resume Next
-        oImgModel.Graphic = CarregarGrafico(aExp(2))
-        On Error GoTo 0
+        oImgModel.HelpText = "" ' carrega o id pro listener de clique identificar qual foi clicada; preenchido por ChemDrawLibAtualizarSlots
         oDialogModel.insertByName("Miniatura" & i, oImgModel)
 
         oLabelModel = oDialogModel.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
@@ -569,18 +575,35 @@ Sub AbrirBibliotecaEstruturas
         oLabelModel.Width = nTamImg
         oLabelModel.Height = 10
         oLabelModel.Align = 1
-        oLabelModel.Label = FormatarRotuloId(aTodosIds(i))
+        oLabelModel.Label = ""
         oDialogModel.insertByName("Rotulo" & i, oLabelModel)
     Next i
 
-    If nAlturaNota > 0 Then
-        oLabelModel = oDialogModel.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
-        oLabelModel.PositionX = nMargem
-        oLabelModel.PositionY = nMargem + nAlturaGrade + 2
-        oLabelModel.Width = oDialogModel.Width - nMargem * 2
-        oLabelModel.Height = 10
-        oLabelModel.Label = "Mostrando as " & nMostrar & " mais recentes de " & nTotalEncontrado & " no total."
-        oDialogModel.insertByName("NotaTruncamento", oLabelModel)
+    oLabelModel = oDialogModel.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+    oLabelModel.PositionX = nMargem
+    oLabelModel.PositionY = nMargem + nAlturaGrade + 2
+    oLabelModel.Width = oDialogModel.Width - nMargem * 2
+    oLabelModel.Height = 10
+    If nTotalEncontrado = 1 Then
+        oLabelModel.Label = "1 estrutura no total."
+    Else
+        oLabelModel.Label = nTotalEncontrado & " estruturas no total."
+    End If
+    oDialogModel.insertByName("NotaTotal", oLabelModel)
+
+    If bTemRolagem Then
+        oScrollModel = oDialogModel.createInstance("com.sun.star.awt.UnoControlScrollBarModel")
+        oScrollModel.PositionX = nMargem + nColunas * nCelW
+        oScrollModel.PositionY = nMargem
+        oScrollModel.Width = nLarguraScroll
+        oScrollModel.Height = nAlturaGrade
+        oScrollModel.Orientation = com.sun.star.awt.ScrollBarOrientation.VERTICAL
+        oScrollModel.ScrollValue = 0
+        oScrollModel.ScrollValueMax = nLinhasTotal - nLinhasVisiveis
+        oScrollModel.LineIncrement = 1
+        oScrollModel.BlockIncrement = nLinhasVisiveis
+        oScrollModel.VisibleSize = nLinhasVisiveis
+        oDialogModel.insertByName("BarraRolagem", oScrollModel)
     End If
 
     oBotaoModel = oDialogModel.createInstance("com.sun.star.awt.UnoControlButtonModel")
@@ -594,26 +617,86 @@ Sub AbrirBibliotecaEstruturas
     goBibliotecaDialog = createUnoService("com.sun.star.awt.UnoControlDialog")
     goBibliotecaDialog.setModel(oDialogModel)
 
+    ChemDrawLibAtualizarSlots(0)
+
     oListenerImg = CreateUnoListener("ChemDrawLibImg_", "com.sun.star.awt.XMouseListener")
-    For i = 0 To nMostrar - 1
+    For i = 0 To goBibliotecaNumSlots - 1
         goBibliotecaDialog.getControl("Miniatura" & i).addMouseListener(oListenerImg)
     Next i
 
     oListenerFechar = CreateUnoListener("ChemDrawLibFechar_", "com.sun.star.awt.XActionListener")
     goBibliotecaDialog.getControl("BotaoFechar").addActionListener(oListenerFechar)
 
+    If bTemRolagem Then
+        oListenerScroll = CreateUnoListener("ChemDrawLibScroll_", "com.sun.star.awt.XAdjustmentListener")
+        goBibliotecaDialog.getControl("BarraRolagem").addAdjustmentListener(oListenerScroll)
+    End If
+
     goBibliotecaDialog.setVisible(True)
     goBibliotecaDialog.execute()
     goBibliotecaDialog.dispose()
 End Sub
 
+REM Recarrega o conteúdo dos slots de miniatura visíveis a partir da linha
+REM nLinhaInicial (chamada na abertura do diálogo e a cada rolagem). Os
+REM controles (posição/tamanho) já existem e são fixos — só o
+REM Graphic/Label/HelpText de cada slot muda pro item que deveria aparecer
+REM ali. Slots além do total de exportações (última linha incompleta)
+REM ficam vazios e não clicáveis (HelpText "").
+Sub ChemDrawLibAtualizarSlots(nLinhaInicial As Integer)
+    Dim i As Integer, nIdx As Integer, nColunas As Integer
+    Dim oImg As Object, oLabel As Object
+    Dim aExp As Variant
+    Dim nTotalEncontrado As Integer
+
+    nColunas = 4
+    On Error Resume Next
+    nTotalEncontrado = UBound(goBibliotecaIds) + 1
+    On Error GoTo 0
+
+    For i = 0 To goBibliotecaNumSlots - 1
+        nIdx = nLinhaInicial * nColunas + i
+        oImg = goBibliotecaDialog.getControl("Miniatura" & i)
+        oLabel = goBibliotecaDialog.getControl("Rotulo" & i)
+
+        If nIdx < nTotalEncontrado Then
+            aExp = LerExportacaoPorId(goBibliotecaIds(nIdx))
+            REM Exportações antigas (de antes da Biblioteca existir) não
+            REM têm sidecar <id>.json — cai pro tamanho padrão de
+            REM TamanhoDoGrafico.
+            If aExp(0) = "" Then aExp = Array(goBibliotecaIds(nIdx), "", ChemDrawExportDir() & "/" & goBibliotecaIds(nIdx) & ".emf", 0, 0)
+
+            oImg.Model.HelpText = goBibliotecaIds(nIdx)
+            On Error Resume Next
+            oImg.Model.Graphic = CarregarGrafico(aExp(2))
+            On Error GoTo 0
+            oLabel.Model.Label = FormatarRotuloId(goBibliotecaIds(nIdx))
+        Else
+            oImg.Model.HelpText = ""
+            oImg.Model.Graphic = Nothing
+            oLabel.Model.Label = ""
+        End If
+    Next i
+End Sub
+
+REM Rolagem: só troca o conteúdo dos slots (ver ChemDrawLibAtualizarSlots),
+REM não recria nem move nenhum controle.
+Sub ChemDrawLibScroll_adjustmentValueChanged(oEvent As Object)
+    ChemDrawLibAtualizarSlots(oEvent.Value)
+End Sub
+
+Sub ChemDrawLibScroll_disposing(oEvent As Object)
+End Sub
+
 REM Clique numa miniatura: acha o id guardado em HelpText, fecha o diálogo
-REM e insere aquela estrutura no documento atual.
+REM e insere aquela estrutura no documento atual. Slots vazios (última
+REM linha incompleta) têm HelpText "" e não fazem nada.
 Sub ChemDrawLibImg_mouseReleased(oEvent As Object)
     Dim sId As String
     Dim aExp As Variant
 
     sId = oEvent.Source.Model.HelpText
+    If sId = "" Then Exit Sub
     goBibliotecaDialog.endExecute()
 
     aExp = LerExportacaoPorId(sId)
