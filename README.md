@@ -10,12 +10,13 @@ Fedora), construído em cima do [Ketcher](https://github.com/epam/ketcher)
 ## Status
 
 Fases 1 (MVP), 2 (preset ACS), 3 (clipboard), 6 (integração por arquivo +
-macro do LibreOffice) e 7 (edição bidirecional, com suporte real a múltiplas
+macro do LibreOffice, já empacotada como extensão `.oxt` com menu
+auto-registrado) e 7 (edição bidirecional, com suporte real a múltiplas
 figuras independentes) concluídas e validadas. Fase 4 (UI customizada) foi
 pulada por enquanto a pedido do usuário — a integração por arquivo/macro
 (Fase 6/7) ficou mais prioritária depois que a colagem via clipboard se
-mostrou inconsistente pra estruturas maiores. Falta a Fase 5 (empacotamento)
-e empacotar a macro do LibreOffice como extensão `.oxt`.
+mostrou inconsistente pra estruturas maiores. Falta a Fase 5 (empacotamento
+do próprio app ChemDraw Linux: AppImage, depois `.deb`/`.rpm`/Flatpak).
 
 ## Requisitos
 
@@ -178,19 +179,61 @@ real) — grava isso em `widthMM`/`heightMM` no `latest.json`, e a macro usa
 esses valores diretamente, sem tentar reintroduzir a escala a partir do
 gráfico já inserido.
 
-### Instalar a macro
+### Instalar a macro: extensão `.oxt` (recomendado)
+
+```bash
+./libreoffice-macro/oxt/build.sh              # gera dist/ChemDrawLinux.oxt
+unopkg add --force dist/ChemDrawLinux.oxt     # feche o LibreOffice antes
+```
+
+Empacota `ChemDrawLinux.bas` como uma biblioteca Basic dentro de uma
+extensão `.oxt` e registra, via `Addons.xcu`, um menu de topo **"ChemDraw
+Linux"** automaticamente — com os 4 itens (Inserir Estrutura, Editar
+Estrutura, Atualizar Imagem, Biblioteca de Estruturas) já ligados às
+macros correspondentes, tanto no Writer quanto no Impress. Não precisa mais
+configurar nada manualmente em Ferramentas > Personalizar depois de
+instalar — validado de ponta a ponta (`unopkg add` + inspeção da árvore de
+acessibilidade AT-SPI da janela real do LibreOffice, já que não há
+ferramenta de screenshot funcional pra diálogos do LibreOffice nesse
+ambiente): o menu aparece com os 4 itens certos, e cada item de fato insere
+a estrutura no documento.
+
+O `Addons.xcu` restringe onde o menu aparece via a propriedade `Context`
+(`com.sun.star.text.TextDocument,com.sun.star.presentation.PresentationDocument`)
+— por isso Writer e Impress, não Calc/Draw.
+
+**Gotcha real encontrado testando** (não documentado em lugar nenhum
+óbvio): uma biblioteca Basic empacotada num `.oxt` precisa de um
+`dialog.xlb` ao lado do `script.xlb`, mesmo que a extensão não tenha
+nenhum diálogo `.xdl` salvo (os diálogos deste projeto, como a Biblioteca
+de Estruturas, são montados em runtime via `UnoControlDialogModel`, não
+`.xdl`). Sem esse arquivo, o carregamento da biblioteca inteira falha
+silenciosamente do ponto de vista do menu ("Erro ao carregar o BASIC do
+documento .../dialog.xlb: Erro geral de entrada/saída"), e a mensagem de
+erro subsequente ("The following Basic script could not be found... 
+location: 'application'") engana, parecendo um problema de resolução de
+biblioteca/localização quando na verdade é só o `dialog.xlb` ausente. O
+`build.sh` já gera um `dialog.xlb` vazio pra evitar isso.
+
+Reinstalar depois de mudar `ChemDrawLinux.bas` ou o `Addons.xcu`: rodar o
+`build.sh` de novo e `unopkg add --force` (não precisa reiniciar nada além
+do LibreOffice).
+
+### Instalação alternativa (desenvolvimento): `install.sh`
 
 ```bash
 ./libreoffice-macro/install.sh
 ```
 
-Copia `ChemDrawLinux.bas` para a biblioteca "Standard" das Minhas Macros do
-LibreOffice (feche o LibreOffice antes de rodar). Depois, no LibreOffice:
-Ferramentas > Macros > Executar macro > Minhas Macros > Standard >
-ChemDrawLinux > escolha uma das macros (`InserirEstruturaQuimica`,
-`AbrirBibliotecaEstruturas`, `EditarEstruturaQuimica`,
-`AtualizarImagemSelecionada`) — ou associe atalhos de teclado em
-Ferramentas > Personalizar > Teclado (procure por "ChemDrawLinux").
+Copia `ChemDrawLinux.bas` direto pra biblioteca "Standard" das Minhas
+Macros do LibreOffice (feche o LibreOffice antes de rodar), sem menu
+automático — útil só pra iterar rápido na macro sem reempacotar o `.oxt` a
+cada mudança. Depois, no LibreOffice: Ferramentas > Macros > Executar macro
+> Minhas Macros > Standard > ChemDrawLinux > escolha uma das macros
+(`InserirEstruturaQuimica`, `AbrirBibliotecaEstruturas`,
+`EditarEstruturaQuimica`, `AtualizarImagemSelecionada`) — ou associe
+atalhos de teclado em Ferramentas > Personalizar > Teclado (procure por
+"ChemDrawLinux").
 
 Testado invocando a macro diretamente via linha de comando (mais confiável
 que automatizar clique de menu):
@@ -200,9 +243,7 @@ soffice "vnd.sun.star.script:Standard.ChemDrawLinux.InserirEstruturaQuimica?lang
 ```
 
 Validado no Writer (inserido como caractere ancorado, tamanho e proporção
-corretos) e no Impress (inserido como forma no slide atual). Empacotar como
-extensão `.oxt` instalável com um clique (em vez de rodar o `install.sh`)
-fica pra depois, como o roteiro original já previa.
+corretos) e no Impress (inserido como forma no slide atual).
 
 ### Edição bidirecional (Fase 7)
 
@@ -336,5 +377,5 @@ momentos diferentes no mesmo documento.
 3. ✅ **Clipboard** — copiar estrutura como PNG (padrão) ou exportar EMF (vetor) pro LibreOffice.
 4. **UI customizada** — layout estilo ChemDraw (paleta à esquerda, status bar). _(pulada por enquanto)_
 5. **Empacotamento** — AppImage, depois `.deb` e `.rpm`/Flatpak.
-6. ✅ **Integração por arquivo + macro do LibreOffice** — botão "Exportar para LibreOffice" (.ket + .emf + latest.json) e macro `InserirEstruturaQuimica`, testados em Writer e Impress. Falta empacotar a macro como extensão `.oxt`. ⚠️ **Próxima etapa a retomar**: a extensão `.oxt` deve incluir um `Addons.xcu` registrando automaticamente, na instalação, um menu "ChemDraw Linux" (itens Inserir Estrutura, Editar Estrutura, Atualizar Imagem, Biblioteca de Estruturas → `InserirEstruturaQuimica`, `EditarEstruturaQuimica`, `AtualizarImagemSelecionada`, `AbrirBibliotecaEstruturas`), válido tanto no Writer quanto no Impress — em vez do usuário configurar isso manualmente em Ferramentas > Personalizar toda vez que instala.
+6. ✅ **Integração por arquivo + macro do LibreOffice** — botão "Exportar para LibreOffice" (.ket + .emf + latest.json) e macro `InserirEstruturaQuimica`, testados em Writer e Impress. ✅ Empacotada como extensão `.oxt` (`libreoffice-macro/oxt/build.sh`) com `Addons.xcu` registrando automaticamente o menu "ChemDraw Linux" (Inserir Estrutura, Editar Estrutura, Atualizar Imagem, Biblioteca de Estruturas) no Writer e no Impress — sem configuração manual em Ferramentas > Personalizar. Ver seção "Instalar a macro: extensão `.oxt`".
 7. ✅ **Edição bidirecional** — macros `EditarEstruturaQuimica` e `AtualizarImagemSelecionada`, com suporte real a múltiplas figuras independentes inseridas/editadas em momentos diferentes no mesmo documento (ver seção "Bugs encontrados..." acima), mais a **Biblioteca de Estruturas** (`AbrirBibliotecaEstruturas`) pra inserir qualquer estrutura já exportada, não só a mais recente. Interceptar duplo-clique na imagem continua adiado (o fluxo via seleção + macro já cobre o essencial).
