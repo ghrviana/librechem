@@ -227,6 +227,45 @@ function watchCanvasCleared() {
     .catch(() => {});
 }
 
+// A ferramenta "Add text" (Alt+T) do Ketcher fica no último grupo da barra
+// lateral esquerda (depois de formas/imagem), fora da área visível sem
+// rolar — usada com frequência, então clona o botão original pro topo da
+// barra como atalho visual (mantém o Alt+T funcionando do mesmo jeito,
+// isso é só conveniência de clique). Um MutationObserver reinsere o clone
+// se o React da própria UI do Ketcher re-renderizar a barra e removê-lo.
+function injectQuickTextButton() {
+  mainWindow.webContents
+    .executeJavaScript(
+      `(() => {
+        function ensureQuickTextButton() {
+          const container = document.querySelector('[data-testid="left-toolbar-buttons"]');
+          const original = container && container.querySelector('button[data-testid="text"]');
+          if (!container || !original) return;
+
+          let quick = container.querySelector('button[data-testid="text-quick-access"]');
+          if (quick && container.firstChild === quick) return;
+
+          if (!quick) {
+            quick = original.cloneNode(true);
+            quick.setAttribute('data-testid', 'text-quick-access');
+            quick.addEventListener('click', (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              const alvo = container.querySelector('button[data-testid="text"]');
+              if (alvo) alvo.click();
+            });
+          }
+          container.insertBefore(quick, container.firstChild);
+        }
+
+        ensureQuickTextButton();
+        const raiz = document.querySelector('[data-testid="left-toolbar-buttons"]') || document.body;
+        new MutationObserver(ensureQuickTextButton).observe(raiz, { childList: true, subtree: true });
+      })()`
+    )
+    .catch(() => {});
+}
+
 // Fase 6/7: exporta .ket + .emf pra pasta que a macro do LibreOffice lê
 // (ver src/libreOfficeExport.js). Se currentExportId já estiver setado
 // (a estrutura foi aberta a partir de uma exportação anterior, via a macro
@@ -442,6 +481,7 @@ async function createWindow() {
   }
 
   watchCanvasCleared();
+  injectQuickTextButton();
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -517,6 +557,26 @@ async function createWindow() {
           );
         } catch (err) {
           fs.writeFileSync(process.env.CHEMDRAW_COPY_VERIFY, 'ERROR: ' + err.message);
+        }
+      }
+      if (process.env.CHEMDRAW_TEST_QUICK_TEXT) {
+        try {
+          const result = await mainWindow.webContents.executeJavaScript(`(async () => {
+            const container = document.querySelector('[data-testid="left-toolbar-buttons"]');
+            // força o Ketcher a re-renderizar a barra selecionando outra ferramenta antes
+            container.querySelector('button[data-testid="hand"]').click();
+            await new Promise((r) => setTimeout(r, 200));
+            const sobreviveuAoRerender = !!container.querySelector('button[data-testid="text-quick-access"]');
+            const eraPrimeiroFilho = container.firstChild === container.querySelector('button[data-testid="text-quick-access"]');
+            container.querySelector('button[data-testid="text-quick-access"]').click();
+            await new Promise((r) => setTimeout(r, 200));
+            const original = container.querySelector('button[data-testid="text"]');
+            const classeDoOriginalDepoisDoClique = original.className;
+            return { sobreviveuAoRerender, eraPrimeiroFilho, classeDoOriginalDepoisDoClique };
+          })()`);
+          fs.writeFileSync(process.env.CHEMDRAW_TEST_QUICK_TEXT, JSON.stringify(result, null, 2));
+        } catch (err) {
+          fs.writeFileSync(process.env.CHEMDRAW_TEST_QUICK_TEXT, 'ERROR: ' + err.message);
         }
       }
       const image = await mainWindow.webContents.capturePage();
