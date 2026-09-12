@@ -599,7 +599,14 @@ Sub AbrirBibliotecaEstruturas
         oScrollModel.Height = nAlturaGrade
         oScrollModel.Orientation = com.sun.star.awt.ScrollBarOrientation.VERTICAL
         oScrollModel.ScrollValue = 0
-        oScrollModel.ScrollValueMax = nLinhasTotal - nLinhasVisiveis
+        REM ScrollValueMax é o tamanho lógico TOTAL do conteúdo (segue a
+        REM mesma convenção do java.awt.Scrollbar em que UnoControlScrollBar
+        REM se baseia), não já descontado de VisibleSize — o próprio
+        REM controle calcula o percurso real (Max - VisibleSize) por dentro.
+        REM Passar "nLinhasTotal - nLinhasVisiveis" aqui (como numa primeira
+        REM tentativa) faz o percurso real virar 0 quando o total só passa
+        REM um pouco do visível, travando a barra sem conseguir rolar nada.
+        oScrollModel.ScrollValueMax = nLinhasTotal
         oScrollModel.LineIncrement = 1
         oScrollModel.BlockIncrement = nLinhasVisiveis
         oScrollModel.VisibleSize = nLinhasVisiveis
