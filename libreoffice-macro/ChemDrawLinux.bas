@@ -11,6 +11,12 @@ REM Instalação: copiar este módulo para a biblioteca "Standard" das Minhas
 REM Macros (~/.config/libreoffice/4/user/basic/Standard/) ou importar via
 REM Ferramentas > Macros > Editar Macros > arquivo > Importar.
 
+REM Referência ao diálogo da Biblioteca de Estruturas enquanto ele está
+REM aberto — os listeners de clique (ChemDrawLibImg_*/ChemDrawLibFechar_*)
+REM precisam dela pra fechar o diálogo (endExecute) quando o usuário clica
+REM numa miniatura ou em "Fechar".
+Dim goBibliotecaDialog As Object
+
 Function ChemDrawExportDir() As String
     ChemDrawExportDir = Environ("HOME") & "/.local/share/chemdraw-linux/exports"
 End Function
@@ -120,6 +126,92 @@ Function LerUltimaExportacao() As Variant
     LerUltimaExportacao = aResultado
 End Function
 
+REM Mesma ideia de LerUltimaExportacao, mas pro sidecar <id>.json de uma
+REM exportação específica (não necessariamente a mais recente) — é o que
+REM permite a Biblioteca de Estruturas inserir qualquer estrutura já
+REM exportada, não só a última. aResultado(0) vem vazio se o sidecar não
+REM existir (ex.: exportações antigas, de antes dessa funcionalidade
+REM existir, não têm <id>.json).
+Function LerExportacaoPorId(sId As String) As Variant
+    Dim sJsonPath As String
+    Dim sJson As String
+    Dim aResultado(4) As Variant
+
+    sJsonPath = ChemDrawExportDir() & "/" & sId & ".json"
+    If Not FileExists(sJsonPath) Then
+        aResultado(0) = ""
+        LerExportacaoPorId = aResultado
+        Exit Function
+    End If
+
+    sJson = LerArquivoComoTexto(sJsonPath)
+    aResultado(0) = ExtrairValorJson(sJson, "id")
+    aResultado(1) = ExtrairValorJson(sJson, "ket")
+    aResultado(2) = ExtrairValorJson(sJson, "emf")
+    aResultado(3) = ExtrairValorJsonNumero(sJson, "widthMM")
+    aResultado(4) = ExtrairValorJsonNumero(sJson, "heightMM")
+    LerExportacaoPorId = aResultado
+End Function
+
+REM Lista os ids de TODAS as exportações já feitas (varre .ket, que sempre
+REM existe, não só as que têm sidecar <id>.json — senão exportações
+REM anteriores à Biblioteca de Estruturas existir ficariam invisíveis),
+REM mais recente primeiro (ids são "AAAA-MM-DD_HH-MM-SS", então ordenação de
+REM texto já é ordenação cronológica). Devolve um array vazio (UBound = -1)
+REM se não houver nenhuma.
+Function ListarExportacoes() As Variant
+    Dim sDir As String
+    Dim sArquivo As String
+    Dim aIds() As String
+    Dim nCount As Integer
+    Dim i As Integer, j As Integer
+    Dim sTemp As String
+    Dim aResultado() As Variant
+
+    sDir = ChemDrawExportDir()
+    nCount = 0
+    ReDim aIds(500)
+
+    sArquivo = Dir(sDir & "/*.ket")
+    Do While sArquivo <> ""
+        aIds(nCount) = Left(sArquivo, Len(sArquivo) - 4) ' remove ".ket"
+        nCount = nCount + 1
+        sArquivo = Dir()
+    Loop
+
+    REM Ordenação por seleção (nCount é pequeno, não precisa de nada mais esperto).
+    For i = 0 To nCount - 2
+        For j = i + 1 To nCount - 1
+            If aIds(j) > aIds(i) Then
+                sTemp = aIds(i)
+                aIds(i) = aIds(j)
+                aIds(j) = sTemp
+            End If
+        Next j
+    Next i
+
+    If nCount = 0 Then
+        ListarExportacoes = Array()
+        Exit Function
+    End If
+
+    ReDim aResultado(nCount - 1)
+    For i = 0 To nCount - 1
+        aResultado(i) = aIds(i)
+    Next i
+    ListarExportacoes = aResultado
+End Function
+
+REM Converte "2026-09-12_09-21-05" em "12/09 09:21", pro rótulo embaixo de
+REM cada miniatura na Biblioteca de Estruturas.
+Function FormatarRotuloId(sId As String) As String
+    If Len(sId) < 19 Then
+        FormatarRotuloId = sId
+        Exit Function
+    End If
+    FormatarRotuloId = Mid(sId, 9, 2) & "/" & Mid(sId, 6, 2) & " " & Mid(sId, 12, 2) & ":" & Mid(sId, 15, 2)
+End Function
+
 REM Tamanho em 1/100mm. Prioriza o widthMM/heightMM calculado pelo próprio
 REM ChemDraw Linux (a partir do SVG original, a 96dpi) — tentar ler de volta
 REM o tamanho "real" do gráfico já importado (SizePixel/Size100thMM) dá
@@ -152,6 +244,13 @@ Sub InserirEstruturaQuimica
     dHeightMM = aExportacao(4)
     If sId = "" Then Exit Sub
 
+    InserirEstruturaPorId(sId, sEmf, dWidthMM, dHeightMM)
+End Sub
+
+REM Lógica de inserção compartilhada entre InserirEstruturaQuimica (sempre a
+REM exportação mais recente) e a Biblioteca de Estruturas (qualquer
+REM exportação passada, escolhida pelo usuário).
+Sub InserirEstruturaPorId(sId As String, sEmf As String, dWidthMM As Double, dHeightMM As Double)
     If ThisComponent.supportsService("com.sun.star.text.TextDocument") Then
         InserirNoWriter(sEmf, sId, dWidthMM, dHeightMM)
     ElseIf ThisComponent.supportsService("com.sun.star.presentation.PresentationDocument") _
@@ -337,4 +436,163 @@ Sub AtualizarImagemSelecionada
     End If
 
     oForma.Graphic = CarregarGrafico(sEmfPath)
+End Sub
+
+REM ------------------------------------------------------------------
+REM Biblioteca de Estruturas: diálogo flutuante com miniaturas de todas as
+REM estruturas já exportadas (não só a mais recente), pra escolher qual
+REM inserir no documento atual — parecido com o seletor de referências do
+REM Zotero. Clicar numa miniatura insere aquela estrutura e fecha o
+REM diálogo; "Fechar" só fecha sem inserir nada.
+REM ------------------------------------------------------------------
+Sub AbrirBibliotecaEstruturas
+    Dim aTodosIds As Variant
+    Dim nTotalEncontrado As Integer
+    Dim nMostrar As Integer
+    Dim oDialogModel As Object
+    Dim oImgModel As Object, oLabelModel As Object, oBotaoModel As Object
+    Dim i As Integer, iCol As Integer, iLin As Integer
+    Dim nColunas As Integer, nLinhas As Integer
+    Dim nTamImg As Integer, nCelW As Integer, nCelH As Integer, nMargem As Integer
+    Dim nX As Integer, nY As Integer
+    Dim aExp As Variant
+    Dim oListenerImg As Object, oListenerFechar As Object
+    Dim nAlturaGrade As Integer, nAlturaNota As Integer
+
+    aTodosIds = ListarExportacoes()
+    On Error Resume Next
+    nTotalEncontrado = UBound(aTodosIds) + 1
+    On Error GoTo 0
+    If nTotalEncontrado <= 0 Then
+        MsgBox "Nenhuma estrutura exportada ainda." & Chr(10) & _
+               "No ChemDraw Linux, use Estrutura > Exportar para LibreOffice primeiro.", _
+               64, "ChemDraw Linux"
+        Exit Sub
+    End If
+
+    nColunas = 4
+    nMostrar = nTotalEncontrado
+    If nMostrar > 16 Then nMostrar = 16
+    nLinhas = Int((nMostrar - 1) / nColunas) + 1
+
+    nTamImg = 50
+    nCelW = 60
+    nCelH = 68
+    nMargem = 8
+    nAlturaGrade = nLinhas * nCelH
+    nAlturaNota = 0
+    If nTotalEncontrado > nMostrar Then nAlturaNota = 14
+
+    oDialogModel = createUnoService("com.sun.star.awt.UnoControlDialogModel")
+    oDialogModel.PositionX = 100
+    oDialogModel.PositionY = 100
+    oDialogModel.Width = nMargem * 2 + nColunas * nCelW
+    oDialogModel.Height = nMargem * 2 + nAlturaGrade + nAlturaNota + 24
+    oDialogModel.Title = "Biblioteca de Estruturas — ChemDraw Linux"
+
+    For i = 0 To nMostrar - 1
+        iCol = i Mod nColunas
+        iLin = Int(i / nColunas)
+        nX = nMargem + iCol * nCelW
+        nY = nMargem + iLin * nCelH
+
+        aExp = LerExportacaoPorId(aTodosIds(i))
+        REM Exportações antigas (de antes da Biblioteca existir) não têm
+        REM sidecar <id>.json — cai pro tamanho padrão de TamanhoDoGrafico.
+        If aExp(0) = "" Then aExp = Array(aTodosIds(i), "", ChemDrawExportDir() & "/" & aTodosIds(i) & ".emf", 0, 0)
+
+        oImgModel = oDialogModel.createInstance("com.sun.star.awt.UnoControlImageControlModel")
+        oImgModel.PositionX = nX
+        oImgModel.PositionY = nY
+        oImgModel.Width = nTamImg
+        oImgModel.Height = nTamImg
+        oImgModel.Border = 1
+        oImgModel.ScaleImage = True
+        oImgModel.HelpText = aTodosIds(i) ' carrega o id pro listener de clique identificar qual foi clicada
+        On Error Resume Next
+        oImgModel.Graphic = CarregarGrafico(aExp(2))
+        On Error GoTo 0
+        oDialogModel.insertByName("Miniatura" & i, oImgModel)
+
+        oLabelModel = oDialogModel.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        oLabelModel.PositionX = nX
+        oLabelModel.PositionY = nY + nTamImg + 2
+        oLabelModel.Width = nTamImg
+        oLabelModel.Height = 10
+        oLabelModel.Align = 1
+        oLabelModel.Label = FormatarRotuloId(aTodosIds(i))
+        oDialogModel.insertByName("Rotulo" & i, oLabelModel)
+    Next i
+
+    If nAlturaNota > 0 Then
+        oLabelModel = oDialogModel.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        oLabelModel.PositionX = nMargem
+        oLabelModel.PositionY = nMargem + nAlturaGrade + 2
+        oLabelModel.Width = oDialogModel.Width - nMargem * 2
+        oLabelModel.Height = 10
+        oLabelModel.Label = "Mostrando as " & nMostrar & " mais recentes de " & nTotalEncontrado & " no total."
+        oDialogModel.insertByName("NotaTruncamento", oLabelModel)
+    End If
+
+    oBotaoModel = oDialogModel.createInstance("com.sun.star.awt.UnoControlButtonModel")
+    oBotaoModel.PositionX = oDialogModel.Width - nMargem - 50
+    oBotaoModel.PositionY = oDialogModel.Height - nMargem - 16
+    oBotaoModel.Width = 50
+    oBotaoModel.Height = 16
+    oBotaoModel.Label = "Fechar"
+    oDialogModel.insertByName("BotaoFechar", oBotaoModel)
+
+    goBibliotecaDialog = createUnoService("com.sun.star.awt.UnoControlDialog")
+    goBibliotecaDialog.setModel(oDialogModel)
+
+    oListenerImg = CreateUnoListener("ChemDrawLibImg_", "com.sun.star.awt.XMouseListener")
+    For i = 0 To nMostrar - 1
+        goBibliotecaDialog.getControl("Miniatura" & i).addMouseListener(oListenerImg)
+    Next i
+
+    oListenerFechar = CreateUnoListener("ChemDrawLibFechar_", "com.sun.star.awt.XActionListener")
+    goBibliotecaDialog.getControl("BotaoFechar").addActionListener(oListenerFechar)
+
+    goBibliotecaDialog.setVisible(True)
+    goBibliotecaDialog.execute()
+    goBibliotecaDialog.dispose()
+End Sub
+
+REM Clique numa miniatura: acha o id guardado em HelpText, fecha o diálogo
+REM e insere aquela estrutura no documento atual.
+Sub ChemDrawLibImg_mouseReleased(oEvent As Object)
+    Dim sId As String
+    Dim aExp As Variant
+
+    sId = oEvent.Source.Model.HelpText
+    goBibliotecaDialog.endExecute()
+
+    aExp = LerExportacaoPorId(sId)
+    If aExp(0) = "" Then
+        REM Sem sidecar (exportação antiga) — ainda dá pra inserir com
+        REM tamanho padrão, só não sabemos largura/altura calculadas.
+        InserirEstruturaPorId(sId, ChemDrawExportDir() & "/" & sId & ".emf", 0, 0)
+    Else
+        InserirEstruturaPorId(aExp(0), aExp(2), aExp(3), aExp(4))
+    End If
+End Sub
+
+Sub ChemDrawLibImg_mousePressed(oEvent As Object)
+End Sub
+
+Sub ChemDrawLibImg_mouseEntered(oEvent As Object)
+End Sub
+
+Sub ChemDrawLibImg_mouseExited(oEvent As Object)
+End Sub
+
+Sub ChemDrawLibImg_disposing(oEvent As Object)
+End Sub
+
+REM Botão "Fechar": só fecha o diálogo sem inserir nada.
+Sub ChemDrawLibFechar_actionPerformed(oEvent As Object)
+    goBibliotecaDialog.endExecute()
+End Sub
+
+Sub ChemDrawLibFechar_disposing(oEvent As Object)
 End Sub

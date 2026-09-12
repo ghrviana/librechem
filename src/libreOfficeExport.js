@@ -30,6 +30,7 @@ function pathsForId(id) {
   return {
     ketPath: path.join(EXPORT_DIR, `${id}.ket`),
     emfPath: path.join(EXPORT_DIR, `${id}.emf`),
+    metaPath: path.join(EXPORT_DIR, `${id}.json`),
     latestPath: path.join(EXPORT_DIR, 'latest.json')
   };
 }
@@ -43,7 +44,7 @@ async function exportForLibreOffice(svgText, ketText, existingId) {
   fs.mkdirSync(EXPORT_DIR, { recursive: true });
 
   const id = existingId || timestampId();
-  const { ketPath, emfPath, latestPath } = pathsForId(id);
+  const { ketPath, emfPath, metaPath, latestPath } = pathsForId(id);
 
   fs.writeFileSync(ketPath, ketText, 'utf8');
 
@@ -51,8 +52,23 @@ async function exportForLibreOffice(svgText, ketText, existingId) {
   fs.writeFileSync(emfPath, emfBuffer);
 
   const size = getPaddedSizeMM(svgText);
-  const latest = { id, ket: ketPath, emf: emfPath, widthMM: size && size.widthMM, heightMM: size && size.heightMM };
+  const latest = {
+    id,
+    ket: ketPath,
+    emf: emfPath,
+    widthMM: size && size.widthMM,
+    heightMM: size && size.heightMM,
+    updatedAt: new Date().toISOString()
+  };
   fs.writeFileSync(latestPath, JSON.stringify(latest, null, 2), 'utf8');
+
+  // Sidecar por id (Biblioteca de Estruturas): latest.json só guarda a
+  // exportação mais recente e é sobrescrito a cada Ctrl+E, então sem isso os
+  // metadados (tamanho) de estruturas mais antigas se perderiam assim que
+  // outra fosse exportada. A macro InserirEstruturaPorId (ChemDrawLinux.bas)
+  // lê esse arquivo pra inserir qualquer estrutura passada, não só a mais
+  // recente.
+  fs.writeFileSync(metaPath, JSON.stringify(latest, null, 2), 'utf8');
 
   return latest;
 }

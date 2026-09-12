@@ -187,9 +187,10 @@ gráfico já inserido.
 Copia `ChemDrawLinux.bas` para a biblioteca "Standard" das Minhas Macros do
 LibreOffice (feche o LibreOffice antes de rodar). Depois, no LibreOffice:
 Ferramentas > Macros > Executar macro > Minhas Macros > Standard >
-ChemDrawLinux > `InserirEstruturaQuimica` — ou associe a um atalho de
-teclado em Ferramentas > Personalizar > Teclado (procure por
-"ChemDrawLinux").
+ChemDrawLinux > escolha uma das macros (`InserirEstruturaQuimica`,
+`AbrirBibliotecaEstruturas`, `EditarEstruturaQuimica`,
+`AtualizarImagemSelecionada`) — ou associe atalhos de teclado em
+Ferramentas > Personalizar > Teclado (procure por "ChemDrawLinux").
 
 Testado invocando a macro diretamente via linha de comando (mais confiável
 que automatizar clique de menu):
@@ -231,6 +232,37 @@ duplicar e sem perder posição/tamanho.
   LibreOffice) continua adiado, como o plano original previa — o fluxo via
   seleção + macro (atalho de teclado ou Ferramentas > Macros) já cobre o
   essencial.
+
+### Biblioteca de Estruturas
+
+`InserirEstruturaQuimica` sempre insere a exportação mais recente
+(`latest.json`) — funciona bem pra "desenhei, exporto, colo na hora", mas não
+ajuda quando você quer inserir uma estrutura de momentos (ou dias) atrás, ou
+inserir a mesma estrutura em documentos diferentes (ex.: uma no Writer, outra
+no Impress). A macro **`AbrirBibliotecaEstruturas`** cobre esse caso: abre um
+diálogo flutuante dentro do próprio LibreOffice com miniaturas de até 16
+estruturas já exportadas (mais recentes primeiro) — clicar numa insere ela no
+documento atual e fecha o diálogo; "Fechar" só fecha sem inserir nada.
+Parecido com o seletor de referências do Zotero, mas pra estruturas
+químicas.
+
+```bash
+soffice "vnd.sun.star.script:Standard.ChemDrawLinux.AbrirBibliotecaEstruturas?language=Basic&location=application"
+```
+
+- Cada exportação agora grava também um sidecar `<id>.json` (além do
+  `.ket`/`.emf`) com seus próprios `widthMM`/`heightMM` — sem isso, só o
+  `latest.json` (sobrescrito a cada `Ctrl+E`) saberia o tamanho de inserção
+  certo, e todas as estruturas mais antigas cairiam pro tamanho padrão.
+  Exportações feitas antes dessa funcionalidade existir não têm esse
+  sidecar; ainda aparecem na biblioteca (a listagem varre os `.ket`, que
+  sempre existem), só usam o tamanho padrão em vez do calculado.
+- As miniaturas usam `UnoControlImageControlModel` (não um botão comum) por
+  causa do `ScaleImage`/`ScaleMode` — só esse controle escala o gráfico de
+  verdade pro tamanho da célula; um `UnoControlButtonModel` com `Graphic`
+  não redimensiona.
+- Validado de ponta a ponta com as 27 estruturas acumuladas nas sessões de
+  teste anteriores.
 
 ### Bugs encontrados usando de verdade com múltiplas figuras (resolvidos)
 
@@ -289,4 +321,4 @@ momentos diferentes no mesmo documento.
 4. **UI customizada** — layout estilo ChemDraw (paleta à esquerda, status bar). _(pulada por enquanto)_
 5. **Empacotamento** — AppImage, depois `.deb` e `.rpm`/Flatpak.
 6. ✅ **Integração por arquivo + macro do LibreOffice** — botão "Exportar para LibreOffice" (.ket + .emf + latest.json) e macro `InserirEstruturaQuimica`, testados em Writer e Impress. Falta empacotar a macro como extensão `.oxt`.
-7. ✅ **Edição bidirecional** — macros `EditarEstruturaQuimica` e `AtualizarImagemSelecionada`, com suporte real a múltiplas figuras independentes inseridas/editadas em momentos diferentes no mesmo documento (ver seção "Bugs encontrados..." acima). Interceptar duplo-clique na imagem continua adiado (o fluxo via seleção + macro já cobre o essencial).
+7. ✅ **Edição bidirecional** — macros `EditarEstruturaQuimica` e `AtualizarImagemSelecionada`, com suporte real a múltiplas figuras independentes inseridas/editadas em momentos diferentes no mesmo documento (ver seção "Bugs encontrados..." acima), mais a **Biblioteca de Estruturas** (`AbrirBibliotecaEstruturas`) pra inserir qualquer estrutura já exportada, não só a mais recente. Interceptar duplo-clique na imagem continua adiado (o fluxo via seleção + macro já cobre o essencial).
