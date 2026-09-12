@@ -77,6 +77,16 @@ clicar nele) e guardamos como um preset em `presets/acs-1996.json`.
   no `index.html` antes do bundle do Ketcher rodar — o preset já vale desde
   o primeiro carregamento, sem precisar reconfigurar toda vez. **ACS é o
   padrão** numa instalação nova.
+  - **Importante**: como o preset é reinjetado a cada abertura do app,
+    qualquer ajuste feito manualmente em Configurações (engrenagem do
+    Ketcher) que também exista como chave em `ketcher-opts` (ex.:
+    `showStereoFlags`) é sobrescrito de volta na próxima vez que o app
+    abrir. Pra mudar algo assim de forma permanente, editar a chave
+    correspondente direto no(s) arquivo(s) de preset (`presets/*.json`),
+    não só nas Configurações. `showStereoFlags` já vem `false` nos dois
+    presets — desliga o rótulo "ABS"/"AND"/"OR" que o Ketcher desenha do
+    lado de estruturas com estereocentro definido (a cunha em si continua
+    aparecendo normalmente, só o texto some).
 - Menu **Estilo** na barra nativa troca entre os presets disponíveis
   (recarrega a janela ao trocar).
 

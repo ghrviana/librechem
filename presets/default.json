@@ -8,7 +8,7 @@
   "fontszUnit": "px",
   "fontszsub": 13,
   "fontszsubUnit": "px",
-  "showStereoFlags": true,
+  "showStereoFlags": false,
   "stereoLabelStyle": "IUPAC",
   "colorOfAbsoluteCenters": "#ff0000",
   "colorOfAndCenters": "#0000cd",

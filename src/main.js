@@ -579,6 +579,25 @@ async function createWindow() {
           fs.writeFileSync(process.env.CHEMDRAW_TEST_QUICK_TEXT, 'ERROR: ' + err.message);
         }
       }
+      if (process.env.CHEMDRAW_TEST_JS_FILE) {
+        // Utilitário de dev genérico: roda um trecho de JS async arbitrário
+        // (lido de um arquivo, pra não precisar escapar aspas na env var)
+        // dentro da página antes do screenshot final — usado pra investigar
+        // a UI do Ketcher (achar seletores, clicar botões/toggles) sem
+        // precisar automatizar clique real de mouse.
+        try {
+          const code = fs.readFileSync(process.env.CHEMDRAW_TEST_JS_FILE, 'utf8');
+          const result = await mainWindow.webContents.executeJavaScript(`(async () => {${code}})()`);
+          if (process.env.CHEMDRAW_TEST_JS_OUT) {
+            fs.writeFileSync(process.env.CHEMDRAW_TEST_JS_OUT, JSON.stringify(result, null, 2));
+          }
+        } catch (err) {
+          console.error('[CHEMDRAW_TEST_JS_FILE] erro:', err);
+          if (process.env.CHEMDRAW_TEST_JS_OUT) {
+            fs.writeFileSync(process.env.CHEMDRAW_TEST_JS_OUT, 'ERROR: ' + err.message);
+          }
+        }
+      }
       const image = await mainWindow.webContents.capturePage();
       fs.writeFileSync(outPath, image.toPNG());
       app.quit();
