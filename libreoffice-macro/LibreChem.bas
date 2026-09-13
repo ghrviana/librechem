@@ -492,7 +492,19 @@ Sub AtualizarImagemSelecionada
         On Error GoTo 0
     End If
 
-    If dRazao > 0 Then oForma.Height = Int(oForma.Width * dRazao)
+    REM oForma.Width/.Height direto (sem passar por .Size) só existe no
+    REM TextGraphicObject do Writer; formas do Impress/Draw (GraphicObjectShape)
+    REM só têm .Size — por isso InserirNoImpressOuDraw já usa .Size pra
+    REM criar a forma. Bug real encontrado: ler/gravar por .Size funciona
+    REM nos dois tipos de documento, então é isso que se usa aqui também
+    REM (gravar direto em oForma.Height quebrava com "Propriedade ou
+    REM método não encontrado: Height" no Impress/Draw).
+    If dRazao > 0 Then
+        Dim oNovoTamanho As New com.sun.star.awt.Size
+        oNovoTamanho.Width = oForma.Size.Width
+        oNovoTamanho.Height = Int(oForma.Size.Width * dRazao)
+        oForma.Size = oNovoTamanho
+    End If
 End Sub
 
 REM ------------------------------------------------------------------
