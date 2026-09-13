@@ -2,7 +2,7 @@
   "name": "librechem",
   "productName": "LibreChem",
   "desktopName": "librechem.desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Editor de estruturas químicas 2D pra Linux, baseado no Ketcher (EPAM), com integração por arquivo/macro com o LibreOffice (Zorin OS e Fedora).",
   "private": true,
   "license": "MIT",
