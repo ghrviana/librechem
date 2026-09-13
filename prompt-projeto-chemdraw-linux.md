@@ -1,5 +1,11 @@
 # Projeto: editor de estruturas químicas 2D estilo ChemDraw para Linux
 
+> **Nota (2026-09-13)**: este é o prompt original do projeto, mantido aqui
+> como registro histórico. "ChemDraw" era só a referência de estilo usada
+> pra descrever a ideia — o projeto foi batizado oficialmente de
+> **LibreChem** (ver README), já que é open source e baseado no Ketcher, não
+> uma cópia do ChemDraw (marca registrada da Revvity/PerkinElmer).
+
 ## Contexto e objetivo
 
 Quero construir um aplicativo desktop para Linux (Zorin OS/Ubuntu e Fedora) que funcione como um editor de estruturas químicas 2D no estilo do ChemDraw, com:
@@ -81,7 +87,7 @@ O objetivo é poder selecionar uma estrutura já colada no LibreOffice e reabri-
 1. **MVP**: Electron básico embutindo o Ketcher, rodando e desenhando corretamente no Zorin OS.
 2. **Preset ACS**: configurar e validar visualmente os parâmetros de renderização.
 3. **Clipboard**: implementar exportação SVG/PNG e validar colagem real no LibreOffice.
-4. **UI customizada**: aplicar o layout estilo ChemDraw (menu, toolbar, paleta, status bar).
+4. ~~**UI customizada**: aplicar o layout estilo ChemDraw (menu, toolbar, paleta, status bar).~~ **Retirada do plano em definitivo** (decisão de 2026-09-13): a UI nativa do Ketcher já é boa o suficiente, e reimplementá-la custom só criaria risco de quebrar a cada atualização do Ketcher sem ganho real — a mudança no botão de Texto do menu nativo já resolveu o que essa fase tentava cobrir.
 5. **Empacotamento**: gerar AppImage, depois .deb e .rpm/Flatpak; validar instalação em Fedora (pode ser via VM se eu não tiver uma máquina Fedora física ainda).
 6. **Integração via arquivo + macro do LibreOffice**: implementar o botão "Exportar para LibreOffice" (native + EMF com timestamp + `latest.emf`), depois a macro de inserção, testar em Writer e Impress, e só então empacotar como extensão `.oxt`.
 7. **Edição bidirecional**: trocar `latest.emf` por `latest.json` com ID rastreável, marcar a imagem inserida com `Name = id`, criar as macros "Editar estrutura química" e "Atualizar imagem selecionada", e testar o ciclo completo: desenhar → colar → selecionar → editar → salvar → atualizar no documento.

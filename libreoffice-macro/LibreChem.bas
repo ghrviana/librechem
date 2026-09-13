@@ -1,7 +1,7 @@
-REM ChemDraw Linux — integração por arquivo com o LibreOffice (Fase 6/7).
+REM LibreChem — integração por arquivo com o LibreOffice (Fase 6/7).
 REM
-REM Lê ~/.local/share/chemdraw-linux/exports/latest.json (escrito pelo app
-REM ChemDraw Linux ao usar Estrutura > Exportar para LibreOffice) e insere o
+REM Lê ~/.local/share/librechem/exports/latest.json (escrito pelo app
+REM LibreChem ao usar Estrutura > Exportar para LibreOffice) e insere o
 REM .emf correspondente no documento atual (Writer ou Impress/Draw),
 REM marcando a forma inserida com Name = id — isso é o que permite reabrir
 REM a estrutura depois (macro EditarEstruturaQuimica) e atualizar a imagem
@@ -12,28 +12,28 @@ REM Macros (~/.config/libreoffice/4/user/basic/Standard/) ou importar via
 REM Ferramentas > Macros > Editar Macros > arquivo > Importar.
 
 REM Referência ao diálogo da Biblioteca de Estruturas enquanto ele está
-REM aberto — os listeners de clique (ChemDrawLibImg_*/ChemDrawLibFechar_*)
+REM aberto — os listeners de clique (LibreChemLibImg_*/LibreChemLibFechar_*)
 REM precisam dela pra fechar o diálogo (endExecute) quando o usuário clica
 REM numa miniatura ou em "Fechar".
 Dim goBibliotecaDialog As Object
 
 REM Ids de todas as exportações (não só as visíveis) e quantidade de slots
-REM de miniatura criados no diálogo — usados por ChemDrawLibAtualizarSlots
+REM de miniatura criados no diálogo — usados por LibreChemLibAtualizarSlots
 REM (chamada pelo listener de rolagem) pra saber o que carregar em cada
 REM slot. Os controles em si são fixos (não recriados a cada rolagem); só
 REM o conteúdo (Graphic/Label/HelpText) de cada slot muda.
 Dim goBibliotecaIds As Variant
 Dim goBibliotecaNumSlots As Integer
 
-Function ChemDrawExportDir() As String
-    ChemDrawExportDir = Environ("HOME") & "/.local/share/chemdraw-linux/exports"
+Function LibreChemExportDir() As String
+    LibreChemExportDir = Environ("HOME") & "/.local/share/librechem/exports"
 End Function
 
 REM Script que o app grava a cada vez que abre, pra dizer pra gente como
 REM relançar ele mesmo com um .ket específico (ver ensureLauncherScript em
 REM src/libreOfficeExport.js).
-Function ChemDrawLauncherPath() As String
-    ChemDrawLauncherPath = Environ("HOME") & "/.local/share/chemdraw-linux/open-ket.sh"
+Function LibreChemLauncherPath() As String
+    LibreChemLauncherPath = Environ("HOME") & "/.local/share/librechem/open-ket.sh"
 End Function
 
 Function LerArquivoComoTexto(sPath As String) As String
@@ -52,7 +52,7 @@ End Function
 
 REM Extrai o valor de uma chave string simples de um JSON "achatado" tipo
 REM {"id": "...", "ket": "..."} — não é um parser de JSON geral, só o
-REM suficiente pro formato fixo que o ChemDraw Linux escreve.
+REM suficiente pro formato fixo que o LibreChem escreve.
 Function ExtrairValorJson(sJson As String, sChave As String) As String
     Dim sPadrao As String
     Dim iInicio As Long
@@ -115,12 +115,12 @@ Function LerUltimaExportacao() As Variant
     Dim sJson As String
     Dim aResultado(4) As Variant
 
-    sJsonPath = ChemDrawExportDir() & "/latest.json"
+    sJsonPath = LibreChemExportDir() & "/latest.json"
 
     If Not FileExists(sJsonPath) Then
         MsgBox "Nenhuma estrutura exportada ainda." & Chr(10) & _
-               "No ChemDraw Linux, use Estrutura > Exportar para LibreOffice primeiro.", _
-               64, "ChemDraw Linux"
+               "No LibreChem, use Estrutura > Exportar para LibreOffice primeiro.", _
+               64, "LibreChem"
         LerUltimaExportacao = Array("", "", "", 0, 0)
         Exit Function
     End If
@@ -145,7 +145,7 @@ Function LerExportacaoPorId(sId As String) As Variant
     Dim sJson As String
     Dim aResultado(4) As Variant
 
-    sJsonPath = ChemDrawExportDir() & "/" & sId & ".json"
+    sJsonPath = LibreChemExportDir() & "/" & sId & ".json"
     If Not FileExists(sJsonPath) Then
         aResultado(0) = ""
         LerExportacaoPorId = aResultado
@@ -176,7 +176,7 @@ Function ListarExportacoes() As Variant
     Dim sTemp As String
     Dim aResultado() As Variant
 
-    sDir = ChemDrawExportDir()
+    sDir = LibreChemExportDir()
     nCount = 0
     ReDim aIds(500)
 
@@ -221,7 +221,7 @@ Function FormatarRotuloId(sId As String) As String
 End Function
 
 REM Tamanho em 1/100mm. Prioriza o widthMM/heightMM calculado pelo próprio
-REM ChemDraw Linux (a partir do SVG original, a 96dpi) — tentar ler de volta
+REM LibreChem (a partir do SVG original, a 96dpi) — tentar ler de volta
 REM o tamanho "real" do gráfico já importado (SizePixel/Size100thMM) dá
 REM valores errados, porque o importador de SVG do LibreOffice não assume
 REM 96dpi pras unidades sem sufixo do SVG.
@@ -248,7 +248,7 @@ Function TamanhoDoGrafico(dWidthMM As Double, dHeightMM As Double, Optional oGra
         oTamGrafico = oGrafico.Size100thMM
         If Not IsNull(oTamGrafico) And oTamGrafico.Width > 0 And oTamGrafico.Height > 0 Then
             dRazao = oTamGrafico.Height / oTamGrafico.Width
-            oSize.Width = 6000 ' 60mm padrão, mesma largura que o ChemDraw Linux usa por padrão
+            oSize.Width = 6000 ' 60mm padrão, mesma largura que o LibreChem usa por padrão
             oSize.Height = Int(6000 * dRazao)
             TamanhoDoGrafico = oSize
             Exit Function
@@ -289,7 +289,7 @@ Sub InserirEstruturaPorId(sId As String, sEmf As String, dWidthMM As Double, dHe
         Or ThisComponent.supportsService("com.sun.star.drawing.DrawingDocument") Then
         InserirNoImpressOuDraw(sEmf, sId, dWidthMM, dHeightMM)
     Else
-        MsgBox "Tipo de documento não suportado. Use Writer, Impress ou Draw.", 48, "ChemDraw Linux"
+        MsgBox "Tipo de documento não suportado. Use Writer, Impress ou Draw.", 48, "LibreChem"
     End If
 End Sub
 
@@ -334,7 +334,7 @@ Sub DebugDumpGraphicNames
     Loop
 
     iFile = FreeFile
-    Open "/tmp/chemdraw-debug-names.txt" For Output As #iFile
+    Open "/tmp/librechem-debug-names.txt" For Output As #iFile
     Print #iFile, sOut
     Close #iFile
 End Sub
@@ -399,7 +399,7 @@ Function PegarFormaSelecionada() As Object
 End Function
 
 REM ------------------------------------------------------------------
-REM Editar Estrutura Química: com a imagem inserida pelo ChemDraw Linux
+REM Editar Estrutura Química: com a imagem inserida pelo LibreChem
 REM selecionada, abre o app já carregado com o .ket correspondente.
 REM ------------------------------------------------------------------
 Sub EditarEstruturaQuimica
@@ -410,27 +410,27 @@ Sub EditarEstruturaQuimica
 
     oForma = PegarFormaSelecionada()
     If IsNull(oForma) Or IsEmpty(oForma) Then
-        MsgBox "Selecione primeiro uma estrutura inserida pelo ChemDraw Linux.", 48, "ChemDraw Linux"
+        MsgBox "Selecione primeiro uma estrutura inserida pelo LibreChem.", 48, "LibreChem"
         Exit Sub
     End If
 
     sId = oForma.Name
     If sId = "" Then
-        MsgBox "Essa imagem não tem um id do ChemDraw Linux (Name vazio) — provavelmente não foi inserida pela macro InserirEstruturaQuimica.", 48, "ChemDraw Linux"
+        MsgBox "Essa imagem não tem um id do LibreChem (Name vazio) — provavelmente não foi inserida pela macro InserirEstruturaQuimica.", 48, "LibreChem"
         Exit Sub
     End If
 
-    sKetPath = ChemDrawExportDir() & "/" & sId & ".ket"
+    sKetPath = LibreChemExportDir() & "/" & sId & ".ket"
     If Not FileExists(sKetPath) Then
         MsgBox "Não achei " & sKetPath & "." & Chr(10) & _
-               "O arquivo pode ter sido movido ou apagado.", 48, "ChemDraw Linux"
+               "O arquivo pode ter sido movido ou apagado.", 48, "LibreChem"
         Exit Sub
     End If
 
-    sLauncher = ChemDrawLauncherPath()
+    sLauncher = LibreChemLauncherPath()
     If Not FileExists(sLauncher) Then
-        MsgBox "Não achei o launcher do ChemDraw Linux (" & sLauncher & ")." & Chr(10) & _
-               "Abra o ChemDraw Linux pelo menos uma vez pra ele gravar esse arquivo.", 48, "ChemDraw Linux"
+        MsgBox "Não achei o launcher do LibreChem (" & sLauncher & ")." & Chr(10) & _
+               "Abra o LibreChem pelo menos uma vez pra ele gravar esse arquivo.", 48, "LibreChem"
         Exit Sub
     End If
 
@@ -439,7 +439,7 @@ End Sub
 
 REM ------------------------------------------------------------------
 REM Atualizar Imagem Selecionada: com a mesma imagem ainda selecionada
-REM (depois de editar e reexportar no ChemDraw Linux), troca o conteúdo
+REM (depois de editar e reexportar no LibreChem), troca o conteúdo
 REM gráfico pelo .emf atualizado — mantém posição, largura e Name, não
 REM insere uma cópia nova. A altura É recalculada (mantendo a largura atual)
 REM pra bater com a proporção da estrutura editada, que pode ter mudado
@@ -457,20 +457,20 @@ Sub AtualizarImagemSelecionada
 
     oForma = PegarFormaSelecionada()
     If IsNull(oForma) Or IsEmpty(oForma) Then
-        MsgBox "Selecione primeiro a estrutura que você quer atualizar.", 48, "ChemDraw Linux"
+        MsgBox "Selecione primeiro a estrutura que você quer atualizar.", 48, "LibreChem"
         Exit Sub
     End If
 
     sId = oForma.Name
     If sId = "" Then
-        MsgBox "Essa imagem não tem um id do ChemDraw Linux (Name vazio).", 48, "ChemDraw Linux"
+        MsgBox "Essa imagem não tem um id do LibreChem (Name vazio).", 48, "LibreChem"
         Exit Sub
     End If
 
-    sEmfPath = ChemDrawExportDir() & "/" & sId & ".emf"
+    sEmfPath = LibreChemExportDir() & "/" & sId & ".emf"
     If Not FileExists(sEmfPath) Then
         MsgBox "Não achei " & sEmfPath & "." & Chr(10) & _
-               "Exporte de novo no ChemDraw Linux (Ctrl+E) antes de atualizar.", 48, "ChemDraw Linux"
+               "Exporte de novo no LibreChem (Ctrl+E) antes de atualizar.", 48, "LibreChem"
         Exit Sub
     End If
 
@@ -520,8 +520,8 @@ Sub AbrirBibliotecaEstruturas
     On Error GoTo 0
     If nTotalEncontrado <= 0 Then
         MsgBox "Nenhuma estrutura exportada ainda." & Chr(10) & _
-               "No ChemDraw Linux, use Estrutura > Exportar para LibreOffice primeiro.", _
-               64, "ChemDraw Linux"
+               "No LibreChem, use Estrutura > Exportar para LibreOffice primeiro.", _
+               64, "LibreChem"
         Exit Sub
     End If
 
@@ -533,7 +533,7 @@ Sub AbrirBibliotecaEstruturas
     REM crescer o diálogo indefinidamente — pensado pra bibliotecas grandes
     REM (trabalhos extensos, centenas de exportações), sem criar um
     REM controle por exportação (só os slots visíveis existem de verdade; o
-    REM conteúdo é trocado ao rolar, ver ChemDrawLibAtualizarSlots).
+    REM conteúdo é trocado ao rolar, ver LibreChemLibAtualizarSlots).
     nLinhasVisiveis = nLinhasTotal
     If nLinhasVisiveis > 4 Then nLinhasVisiveis = 4
     bTemRolagem = (nLinhasTotal > nLinhasVisiveis)
@@ -551,7 +551,7 @@ Sub AbrirBibliotecaEstruturas
     oDialogModel.PositionY = 100
     oDialogModel.Width = nMargem * 2 + nColunas * nCelW + nLarguraScroll
     oDialogModel.Height = nMargem * 2 + nAlturaGrade + 14 + 20
-    oDialogModel.Title = "Biblioteca de Estruturas — ChemDraw Linux"
+    oDialogModel.Title = "Biblioteca de Estruturas — LibreChem"
 
     For i = 0 To goBibliotecaNumSlots - 1
         iCol = i Mod nColunas
@@ -566,7 +566,7 @@ Sub AbrirBibliotecaEstruturas
         oImgModel.Height = nTamImg
         oImgModel.Border = 1
         oImgModel.ScaleImage = True
-        oImgModel.HelpText = "" ' carrega o id pro listener de clique identificar qual foi clicada; preenchido por ChemDrawLibAtualizarSlots
+        oImgModel.HelpText = "" ' carrega o id pro listener de clique identificar qual foi clicada; preenchido por LibreChemLibAtualizarSlots
         oDialogModel.insertByName("Miniatura" & i, oImgModel)
 
         oLabelModel = oDialogModel.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
@@ -624,18 +624,18 @@ Sub AbrirBibliotecaEstruturas
     goBibliotecaDialog = createUnoService("com.sun.star.awt.UnoControlDialog")
     goBibliotecaDialog.setModel(oDialogModel)
 
-    ChemDrawLibAtualizarSlots(0)
+    LibreChemLibAtualizarSlots(0)
 
-    oListenerImg = CreateUnoListener("ChemDrawLibImg_", "com.sun.star.awt.XMouseListener")
+    oListenerImg = CreateUnoListener("LibreChemLibImg_", "com.sun.star.awt.XMouseListener")
     For i = 0 To goBibliotecaNumSlots - 1
         goBibliotecaDialog.getControl("Miniatura" & i).addMouseListener(oListenerImg)
     Next i
 
-    oListenerFechar = CreateUnoListener("ChemDrawLibFechar_", "com.sun.star.awt.XActionListener")
+    oListenerFechar = CreateUnoListener("LibreChemLibFechar_", "com.sun.star.awt.XActionListener")
     goBibliotecaDialog.getControl("BotaoFechar").addActionListener(oListenerFechar)
 
     If bTemRolagem Then
-        oListenerScroll = CreateUnoListener("ChemDrawLibScroll_", "com.sun.star.awt.XAdjustmentListener")
+        oListenerScroll = CreateUnoListener("LibreChemLibScroll_", "com.sun.star.awt.XAdjustmentListener")
         goBibliotecaDialog.getControl("BarraRolagem").addAdjustmentListener(oListenerScroll)
     End If
 
@@ -650,7 +650,7 @@ REM controles (posição/tamanho) já existem e são fixos — só o
 REM Graphic/Label/HelpText de cada slot muda pro item que deveria aparecer
 REM ali. Slots além do total de exportações (última linha incompleta)
 REM ficam vazios e não clicáveis (HelpText "").
-Sub ChemDrawLibAtualizarSlots(nLinhaInicial As Integer)
+Sub LibreChemLibAtualizarSlots(nLinhaInicial As Integer)
     Dim i As Integer, nIdx As Integer, nColunas As Integer
     Dim oImg As Object, oLabel As Object
     Dim aExp As Variant
@@ -671,7 +671,7 @@ Sub ChemDrawLibAtualizarSlots(nLinhaInicial As Integer)
             REM Exportações antigas (de antes da Biblioteca existir) não
             REM têm sidecar <id>.json — cai pro tamanho padrão de
             REM TamanhoDoGrafico.
-            If aExp(0) = "" Then aExp = Array(goBibliotecaIds(nIdx), "", ChemDrawExportDir() & "/" & goBibliotecaIds(nIdx) & ".emf", 0, 0)
+            If aExp(0) = "" Then aExp = Array(goBibliotecaIds(nIdx), "", LibreChemExportDir() & "/" & goBibliotecaIds(nIdx) & ".emf", 0, 0)
 
             oImg.Model.HelpText = goBibliotecaIds(nIdx)
             On Error Resume Next
@@ -686,19 +686,19 @@ Sub ChemDrawLibAtualizarSlots(nLinhaInicial As Integer)
     Next i
 End Sub
 
-REM Rolagem: só troca o conteúdo dos slots (ver ChemDrawLibAtualizarSlots),
+REM Rolagem: só troca o conteúdo dos slots (ver LibreChemLibAtualizarSlots),
 REM não recria nem move nenhum controle.
-Sub ChemDrawLibScroll_adjustmentValueChanged(oEvent As Object)
-    ChemDrawLibAtualizarSlots(oEvent.Value)
+Sub LibreChemLibScroll_adjustmentValueChanged(oEvent As Object)
+    LibreChemLibAtualizarSlots(oEvent.Value)
 End Sub
 
-Sub ChemDrawLibScroll_disposing(oEvent As Object)
+Sub LibreChemLibScroll_disposing(oEvent As Object)
 End Sub
 
 REM Clique numa miniatura: acha o id guardado em HelpText, fecha o diálogo
 REM e insere aquela estrutura no documento atual. Slots vazios (última
 REM linha incompleta) têm HelpText "" e não fazem nada.
-Sub ChemDrawLibImg_mouseReleased(oEvent As Object)
+Sub LibreChemLibImg_mouseReleased(oEvent As Object)
     Dim sId As String
     Dim aExp As Variant
 
@@ -710,28 +710,28 @@ Sub ChemDrawLibImg_mouseReleased(oEvent As Object)
     If aExp(0) = "" Then
         REM Sem sidecar (exportação antiga) — ainda dá pra inserir com
         REM tamanho padrão, só não sabemos largura/altura calculadas.
-        InserirEstruturaPorId(sId, ChemDrawExportDir() & "/" & sId & ".emf", 0, 0)
+        InserirEstruturaPorId(sId, LibreChemExportDir() & "/" & sId & ".emf", 0, 0)
     Else
         InserirEstruturaPorId(aExp(0), aExp(2), aExp(3), aExp(4))
     End If
 End Sub
 
-Sub ChemDrawLibImg_mousePressed(oEvent As Object)
+Sub LibreChemLibImg_mousePressed(oEvent As Object)
 End Sub
 
-Sub ChemDrawLibImg_mouseEntered(oEvent As Object)
+Sub LibreChemLibImg_mouseEntered(oEvent As Object)
 End Sub
 
-Sub ChemDrawLibImg_mouseExited(oEvent As Object)
+Sub LibreChemLibImg_mouseExited(oEvent As Object)
 End Sub
 
-Sub ChemDrawLibImg_disposing(oEvent As Object)
+Sub LibreChemLibImg_disposing(oEvent As Object)
 End Sub
 
 REM Botão "Fechar": só fecha o diálogo sem inserir nada.
-Sub ChemDrawLibFechar_actionPerformed(oEvent As Object)
+Sub LibreChemLibFechar_actionPerformed(oEvent As Object)
     goBibliotecaDialog.endExecute()
 End Sub
 
-Sub ChemDrawLibFechar_disposing(oEvent As Object)
+Sub LibreChemLibFechar_disposing(oEvent As Object)
 End Sub

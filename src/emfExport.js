@@ -15,7 +15,7 @@ function convertSvgToEmf(svgText) {
   return new Promise((resolve, reject) => {
     let tmpDir;
     try {
-      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chemdraw-emf-'));
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'librechem-emf-'));
     } catch (err) {
       reject(err);
       return;

@@ -5,7 +5,7 @@
 //
 // Cada exportação grava um par <id>.ket / <id>.emf na pasta de exports e
 // atualiza latest.json com esse id. A macro do LibreOffice (ver
-// libreoffice-macro/ChemDrawLinux.bas) lê latest.json, insere o .emf no
+// libreoffice-macro/LibreChem.bas) lê latest.json, insere o .emf no
 // documento e marca a forma inserida com Name = id — isso é o que permite
 // a edição bidirecional da Fase 7 (selecionar a imagem no documento e
 // achar o .ket correspondente pra reabrir no editor).
@@ -16,7 +16,7 @@ const path = require('path');
 const emfExport = require('./emfExport');
 const { getPaddedSizeMM } = require('./svgUtils');
 
-const EXPORT_DIR = path.join(os.homedir(), '.local', 'share', 'chemdraw-linux', 'exports');
+const EXPORT_DIR = path.join(os.homedir(), '.local', 'share', 'librechem', 'exports');
 
 function timestampId(date = new Date()) {
   const pad = (n) => String(n).padStart(2, '0');
@@ -65,7 +65,7 @@ async function exportForLibreOffice(svgText, ketText, existingId) {
   // Sidecar por id (Biblioteca de Estruturas): latest.json só guarda a
   // exportação mais recente e é sobrescrito a cada Ctrl+E, então sem isso os
   // metadados (tamanho) de estruturas mais antigas se perderiam assim que
-  // outra fosse exportada. A macro InserirEstruturaPorId (ChemDrawLinux.bas)
+  // outra fosse exportada. A macro InserirEstruturaPorId (LibreChem.bas)
   // lê esse arquivo pra inserir qualquer estrutura passada, não só a mais
   // recente.
   fs.writeFileSync(metaPath, JSON.stringify(latest, null, 2), 'utf8');
@@ -88,21 +88,32 @@ function idFromKetPath(filePath) {
   return path.basename(resolved, '.ket');
 }
 
-const APP_DATA_DIR = path.join(os.homedir(), '.local', 'share', 'chemdraw-linux');
+const APP_DATA_DIR = path.join(os.homedir(), '.local', 'share', 'librechem');
 const LAUNCHER_PATH = path.join(APP_DATA_DIR, 'open-ket.sh');
 
 // Escreve (ou atualiza) um script que a macro "Editar Estrutura Química" do
 // LibreOffice usa pra reabrir o app com um .ket específico — sem isso, a
-// macro Basic não teria como saber onde/como rodar o ChemDraw Linux.
+// macro Basic não teria como saber onde/como rodar o LibreChem.
 // Regenerado a cada início do app, então sempre aponta pra instalação atual
 // (útil em dev, onde a pasta do projeto pode mudar).
-function ensureLauncherScript(projectRoot) {
+//
+// Empacotado (.deb/.rpm/AppImage) e em dev precisam de comandos bem
+// diferentes: empacotado, `execPath` já É o binário final (ex.:
+// /opt/LibreChem/librechem) — só rodar ele direto, sem `cd` (o app resolve
+// tudo que precisa via caminho absoluto internamente, não do cwd). Em dev,
+// `execPath` aponta pro binário do Electron dentro de node_modules, que só
+// funciona rodado de dentro da pasta do projeto com `.` como app a carregar
+// — daí o `cd` + `electron .`. Bug real encontrado: antes disso, o script
+// gerado num app empacotado tentava `cd` pra dentro do `app.asar` (não é
+// um diretório de verdade) e chamar um `node_modules/.bin/electron` que
+// não existe empacotado — "Editar Estrutura" na macro falhava calado
+// (Shell() do Basic não reporta erro nenhum de volta).
+function ensureLauncherScript({ isPackaged, execPath, projectRoot }) {
   fs.mkdirSync(APP_DATA_DIR, { recursive: true });
-  const electronBin = path.join(projectRoot, 'node_modules', '.bin', 'electron');
-  const script =
-    `#!/bin/bash\n` +
-    `cd ${JSON.stringify(projectRoot)}\n` +
-    `exec env -u ELECTRON_RUN_AS_NODE ${JSON.stringify(electronBin)} . "$1"\n`;
+  const script = isPackaged
+    ? `#!/bin/bash\n` + `exec ${JSON.stringify(execPath)} "$1"\n`
+    : `#!/bin/bash\n` +
+      `exec env -u ELECTRON_RUN_AS_NODE ${JSON.stringify(execPath)} ${JSON.stringify(projectRoot)} "$1"\n`;
   fs.writeFileSync(LAUNCHER_PATH, script, { mode: 0o755 });
   return LAUNCHER_PATH;
 }

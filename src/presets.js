@@ -24,7 +24,7 @@ function loadPresetOpts(id) {
 }
 
 function statePath(userDataPath) {
-  return path.join(userDataPath, 'chemdraw-state.json');
+  return path.join(userDataPath, 'librechem-state.json');
 }
 
 function loadActivePresetId(userDataPath) {

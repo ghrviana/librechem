@@ -5,8 +5,8 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('chemdraw', {
-  copyStructureSvg: (svgText) => ipcRenderer.invoke('chemdraw:copy-svg', svgText),
-  copyStructurePng: (base64Png) => ipcRenderer.invoke('chemdraw:copy-png', base64Png),
-  notifyCanvasCleared: () => ipcRenderer.send('chemdraw:canvas-cleared')
+contextBridge.exposeInMainWorld('librechem', {
+  copyStructureSvg: (svgText) => ipcRenderer.invoke('librechem:copy-svg', svgText),
+  copyStructurePng: (base64Png) => ipcRenderer.invoke('librechem:copy-png', base64Png),
+  notifyCanvasCleared: () => ipcRenderer.send('librechem:canvas-cleared')
 });

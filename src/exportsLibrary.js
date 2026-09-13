@@ -1,7 +1,7 @@
 'use strict';
 
 // Backup/portabilidade da Biblioteca de Estruturas
-// (~/.local/share/chemdraw-linux/exports/): exportar tudo num único .zip
+// (~/.local/share/librechem/exports/): exportar tudo num único .zip
 // (pra levar pra outro computador) e importar de volta, sem depender de
 // nenhuma sincronização/nuvem — é só copiar o arquivo .zip. Usa os
 // binários `zip`/`unzip` (já exigidos pelo projeto, ver README) em vez de
@@ -45,7 +45,7 @@ async function exportLibraryToZip(destZipPath) {
 // exportação feita NELA mesma), não a de quem gerou o zip.
 async function importLibraryFromZip(srcZipPath) {
   fs.mkdirSync(EXPORT_DIR, { recursive: true });
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chemdraw-import-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'librechem-import-'));
   try {
     await run('unzip', ['-oq', srcZipPath, '-d', tmpDir]);
     const ids = fs

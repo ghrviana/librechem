@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Instala a macro ChemDrawLinux.bas na biblioteca "Standard" das Minhas
+# Instala a macro LibreChem.bas na biblioteca "Standard" das Minhas
 # Macros do LibreOffice (perfil do usuário atual). Feche o LibreOffice antes
 # de rodar — ele não relê os módulos do disco enquanto está aberto.
 #
 # Depois de instalar, no LibreOffice: Ferramentas > Macros > Editar Macros,
-# em "Minhas Macros > Standard > ChemDrawLinux" tem as sub-rotinas
+# em "Minhas Macros > Standard > LibreChem" tem as sub-rotinas
 # disponíveis (ex.: InserirEstruturaQuimica). Associe a um atalho de teclado
-# em Ferramentas > Personalizar > Teclado, procurando por "ChemDrawLinux".
+# em Ferramentas > Personalizar > Teclado, procurando por "LibreChem".
 
 set -euo pipefail
 
@@ -21,7 +21,7 @@ fi
 
 mkdir -p "$BASIC_DIR"
 
-python3 - "$SCRIPT_DIR/ChemDrawLinux.bas" "$BASIC_DIR/ChemDrawLinux.xba" <<'PYEOF'
+python3 - "$SCRIPT_DIR/LibreChem.bas" "$BASIC_DIR/LibreChem.xba" <<'PYEOF'
 import sys
 import xml.sax.saxutils as saxutils
 
@@ -34,7 +34,7 @@ xba = (
     '<?xml version="1.0" encoding="UTF-8"?>\n'
     '<!DOCTYPE script:module PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "module.dtd">\n'
     '<script:module xmlns:script="http://openoffice.org/2000/script" '
-    'script:name="ChemDrawLinux" script:language="StarBasic">' + escaped + '</script:module>'
+    'script:name="LibreChem" script:language="StarBasic">' + escaped + '</script:module>'
 )
 with open(dest_path, "w", encoding="utf-8") as f:
     f.write(xba)
@@ -45,12 +45,12 @@ if [ ! -f "$XLB_FILE" ]; then
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE library:library PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "library.dtd">
 <library:library xmlns:library="http://openoffice.org/2000/library" library:name="Standard" library:readonly="false" library:passwordprotected="false">
- <library:element library:name="ChemDrawLinux"/>
+ <library:element library:name="LibreChem"/>
 </library:library>
 EOF
-elif ! grep -q 'library:name="ChemDrawLinux"' "$XLB_FILE"; then
-  sed -i 's#</library:library>#  <library:element library:name="ChemDrawLinux"/>\n</library:library>#' "$XLB_FILE"
+elif ! grep -q 'library:name="LibreChem"' "$XLB_FILE"; then
+  sed -i 's#</library:library>#  <library:element library:name="LibreChem"/>\n</library:library>#' "$XLB_FILE"
 fi
 
-echo "Macro instalada em: $BASIC_DIR/ChemDrawLinux.xba"
-echo "Abra o LibreOffice e rode Ferramentas > Macros > Executar macro > Standard > ChemDrawLinux > InserirEstruturaQuimica"
+echo "Macro instalada em: $BASIC_DIR/LibreChem.xba"
+echo "Abra o LibreOffice e rode Ferramentas > Macros > Executar macro > Standard > LibreChem > InserirEstruturaQuimica"

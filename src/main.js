@@ -83,6 +83,7 @@ function startStaticServer() {
         res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
         fs.createReadStream(filePath).pipe(res);
       } catch (err) {
+        console.error('[static server]', err);
         res.writeHead(500);
         res.end('Internal Server Error');
       }
@@ -119,14 +120,14 @@ async function clearHoverPreviewAndWait() {
 
 // Pega a estrutura atual do Ketcher, gera a imagem (SVG ou PNG) no próprio
 // renderer (via window.ketcher.generateImage) e manda pro clipboard do
-// sistema através do preload (chemdraw:copy-svg / chemdraw:copy-png).
+// sistema através do preload (librechem:copy-svg / librechem:copy-png).
 function copyScriptFor(format) {
   return format === 'svg'
     ? `(async () => {
         const struct = await window.ketcher.getKet();
         const blob = await window.ketcher.generateImage(struct, { outputFormat: 'svg' });
         const text = await blob.text();
-        await window.chemdraw.copyStructureSvg(text);
+        await window.librechem.copyStructureSvg(text);
       })()`
     : `(async () => {
         const struct = await window.ketcher.getKet();
@@ -135,7 +136,7 @@ function copyScriptFor(format) {
         let binary = '';
         const bytes = new Uint8Array(buf);
         for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-        await window.chemdraw.copyStructurePng(btoa(binary));
+        await window.librechem.copyStructurePng(btoa(binary));
       })()`;
 }
 
@@ -209,7 +210,7 @@ function startNewStructure() {
 // usa o ícone "Clear Canvas" da própria barra de desenho do Ketcher — ação
 // que não passa pelo menu nativo do app, então startNewStructure() nunca
 // seria chamado só por causa dela. Ao detectar a transição não-vazio →
-// vazio, avisa o processo main (via chemdraw:canvas-cleared) pra resetar
+// vazio, avisa o processo main (via librechem:canvas-cleared) pra resetar
 // currentExportId, do mesmo jeito que "Novo"/"Limpar Estrutura" fazem.
 function watchCanvasCleared() {
   mainWindow.webContents
@@ -219,7 +220,7 @@ function watchCanvasCleared() {
         setInterval(async () => {
           try {
             const isEmpty = !(await window.ketcher.getSmiles());
-            if (isEmpty && !wasEmpty) window.chemdraw.notifyCanvasCleared();
+            if (isEmpty && !wasEmpty) window.librechem.notifyCanvasCleared();
             wasEmpty = isEmpty;
           } catch (e) {}
         }, 800);
@@ -305,13 +306,13 @@ async function exportToLibreOffice() {
   }
 }
 
-// Exporta toda a Biblioteca de Estruturas (~/.local/share/chemdraw-linux/exports/)
+// Exporta toda a Biblioteca de Estruturas (~/.local/share/librechem/exports/)
 // num único .zip, pra levar pra outro computador (ver exportsLibrary.js).
 async function exportStructureLibrary() {
   try {
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
       title: 'Exportar Biblioteca de Estruturas',
-      defaultPath: path.join(app.getPath('home'), `chemdraw-biblioteca-${libreOfficeExport.timestampId()}.zip`),
+      defaultPath: path.join(app.getPath('home'), `librechem-biblioteca-${libreOfficeExport.timestampId()}.zip`),
       filters: [{ name: 'Arquivo ZIP', extensions: ['zip'] }]
     });
     if (canceled || !filePath) return;
@@ -390,7 +391,7 @@ async function clearExportHistoryWithConfirm() {
     if (response === 1) {
       const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
         title: 'Exportar backup antes de limpar',
-        defaultPath: path.join(app.getPath('home'), `chemdraw-biblioteca-backup-${libreOfficeExport.timestampId()}.zip`),
+        defaultPath: path.join(app.getPath('home'), `librechem-biblioteca-backup-${libreOfficeExport.timestampId()}.zip`),
         filters: [{ name: 'Arquivo ZIP', extensions: ['zip'] }]
       });
       if (canceled || !filePath) return; // desistiu do backup: cancela a limpeza também, por segurança
@@ -524,12 +525,12 @@ function buildMenu() {
       label: 'Ajuda',
       submenu: [
         {
-          label: 'Sobre o ChemDraw Linux',
+          label: 'Sobre o LibreChem',
           click: () =>
             dialog.showMessageBox(mainWindow, {
               type: 'info',
               title: 'Sobre',
-              message: 'ChemDraw Linux',
+              message: 'LibreChem',
               detail:
                 'Editor de estruturas químicas 2D baseado no Ketcher (EPAM, MIT).\nVersão do app: ' +
                 app.getVersion()
@@ -610,11 +611,11 @@ async function createWindow() {
     mainWindow = null;
   });
 
-  // Utilitário de dev: CHEMDRAW_SCREENSHOT=/caminho/arquivo.png npm start
+  // Utilitário de dev: LIBRECHEM_SCREENSHOT=/caminho/arquivo.png npm start
   // captura a janela pronta e fecha o app (usado para validar builds sem UI interativa).
-  if (process.env.CHEMDRAW_SCREENSHOT) {
-    const outPath = process.env.CHEMDRAW_SCREENSHOT;
-    const testSmiles = process.env.CHEMDRAW_TEST_SMILES;
+  if (process.env.LIBRECHEM_SCREENSHOT) {
+    const outPath = process.env.LIBRECHEM_SCREENSHOT;
+    const testSmiles = process.env.LIBRECHEM_TEST_SMILES;
     setTimeout(async () => {
       if (testSmiles) {
         try {
@@ -623,24 +624,24 @@ async function createWindow() {
           );
           await new Promise((r) => setTimeout(r, 1500));
         } catch (err) {
-          console.error('[CHEMDRAW_TEST_SMILES] erro ao setar molécula:', err);
+          console.error('[LIBRECHEM_TEST_SMILES] erro ao setar molécula:', err);
         }
       }
-      if (process.env.CHEMDRAW_TEST_EXPORT) {
+      if (process.env.LIBRECHEM_TEST_EXPORT) {
         try {
           const { latest, wasExisting } = await exportToLibreOfficeCore();
           fs.writeFileSync(
-            process.env.CHEMDRAW_TEST_EXPORT,
+            process.env.LIBRECHEM_TEST_EXPORT,
             JSON.stringify({ ok: true, latest, wasExisting }, null, 2)
           );
         } catch (err) {
           fs.writeFileSync(
-            process.env.CHEMDRAW_TEST_EXPORT,
+            process.env.LIBRECHEM_TEST_EXPORT,
             JSON.stringify({ ok: false, error: err.message }, null, 2)
           );
         }
       }
-      if (process.env.CHEMDRAW_TEST_CLEAR_BUG) {
+      if (process.env.LIBRECHEM_TEST_CLEAR_BUG) {
         try {
           const result1 = await exportToLibreOfficeCore();
           startNewStructure();
@@ -654,7 +655,7 @@ async function createWindow() {
           await new Promise((r) => setTimeout(r, 1000));
           const result2 = await exportToLibreOfficeCore();
           fs.writeFileSync(
-            process.env.CHEMDRAW_TEST_CLEAR_BUG,
+            process.env.LIBRECHEM_TEST_CLEAR_BUG,
             JSON.stringify(
               {
                 id1: result1.latest.id,
@@ -666,23 +667,23 @@ async function createWindow() {
             )
           );
         } catch (err) {
-          fs.writeFileSync(process.env.CHEMDRAW_TEST_CLEAR_BUG, 'ERROR: ' + err.message);
+          fs.writeFileSync(process.env.LIBRECHEM_TEST_CLEAR_BUG, 'ERROR: ' + err.message);
         }
       }
-      if (process.env.CHEMDRAW_TEST_COPY) {
+      if (process.env.LIBRECHEM_TEST_COPY) {
         const { clipboard } = require('electron');
         try {
-          await copyStructureCore(process.env.CHEMDRAW_TEST_COPY);
+          await copyStructureCore(process.env.LIBRECHEM_TEST_COPY);
           const items = await clipboard.read();
           fs.writeFileSync(
-            process.env.CHEMDRAW_COPY_VERIFY,
+            process.env.LIBRECHEM_COPY_VERIFY,
             JSON.stringify({ types: items.map((i) => i.types) }, null, 2)
           );
         } catch (err) {
-          fs.writeFileSync(process.env.CHEMDRAW_COPY_VERIFY, 'ERROR: ' + err.message);
+          fs.writeFileSync(process.env.LIBRECHEM_COPY_VERIFY, 'ERROR: ' + err.message);
         }
       }
-      if (process.env.CHEMDRAW_TEST_QUICK_TEXT) {
+      if (process.env.LIBRECHEM_TEST_QUICK_TEXT) {
         try {
           const result = await mainWindow.webContents.executeJavaScript(`(async () => {
             const container = document.querySelector('[data-testid="left-toolbar-buttons"]');
@@ -697,27 +698,27 @@ async function createWindow() {
             const classeDoOriginalDepoisDoClique = original.className;
             return { sobreviveuAoRerender, eraPrimeiroFilho, classeDoOriginalDepoisDoClique };
           })()`);
-          fs.writeFileSync(process.env.CHEMDRAW_TEST_QUICK_TEXT, JSON.stringify(result, null, 2));
+          fs.writeFileSync(process.env.LIBRECHEM_TEST_QUICK_TEXT, JSON.stringify(result, null, 2));
         } catch (err) {
-          fs.writeFileSync(process.env.CHEMDRAW_TEST_QUICK_TEXT, 'ERROR: ' + err.message);
+          fs.writeFileSync(process.env.LIBRECHEM_TEST_QUICK_TEXT, 'ERROR: ' + err.message);
         }
       }
-      if (process.env.CHEMDRAW_TEST_JS_FILE) {
+      if (process.env.LIBRECHEM_TEST_JS_FILE) {
         // Utilitário de dev genérico: roda um trecho de JS async arbitrário
         // (lido de um arquivo, pra não precisar escapar aspas na env var)
         // dentro da página antes do screenshot final — usado pra investigar
         // a UI do Ketcher (achar seletores, clicar botões/toggles) sem
         // precisar automatizar clique real de mouse.
         try {
-          const code = fs.readFileSync(process.env.CHEMDRAW_TEST_JS_FILE, 'utf8');
+          const code = fs.readFileSync(process.env.LIBRECHEM_TEST_JS_FILE, 'utf8');
           const result = await mainWindow.webContents.executeJavaScript(`(async () => {${code}})()`);
-          if (process.env.CHEMDRAW_TEST_JS_OUT) {
-            fs.writeFileSync(process.env.CHEMDRAW_TEST_JS_OUT, JSON.stringify(result, null, 2));
+          if (process.env.LIBRECHEM_TEST_JS_OUT) {
+            fs.writeFileSync(process.env.LIBRECHEM_TEST_JS_OUT, JSON.stringify(result, null, 2));
           }
         } catch (err) {
-          console.error('[CHEMDRAW_TEST_JS_FILE] erro:', err);
-          if (process.env.CHEMDRAW_TEST_JS_OUT) {
-            fs.writeFileSync(process.env.CHEMDRAW_TEST_JS_OUT, 'ERROR: ' + err.message);
+          console.error('[LIBRECHEM_TEST_JS_FILE] erro:', err);
+          if (process.env.LIBRECHEM_TEST_JS_OUT) {
+            fs.writeFileSync(process.env.LIBRECHEM_TEST_JS_OUT, 'ERROR: ' + err.message);
           }
         }
       }
@@ -728,11 +729,11 @@ async function createWindow() {
   }
 }
 
-ipcMain.handle('chemdraw:copy-svg', async (_event, svgText) => {
+ipcMain.handle('librechem:copy-svg', async (_event, svgText) => {
   await clipboardBridge.writeSvgToClipboard(svgText);
 });
 
-ipcMain.handle('chemdraw:copy-png', async (_event, base64Png) => {
+ipcMain.handle('librechem:copy-png', async (_event, base64Png) => {
   await clipboardBridge.writePngToClipboard(base64Png);
 });
 
@@ -743,7 +744,7 @@ ipcMain.handle('chemdraw:copy-png', async (_event, base64Png) => {
 // "Exportar para LibreOffice" sobrescrevia o .ket/.emf da estrutura
 // ANTERIOR com o conteúdo da nova (bug real: editar uma figura já inserida
 // sempre reabria a mais recente, não a que estava selecionada).
-ipcMain.on('chemdraw:canvas-cleared', () => {
+ipcMain.on('librechem:canvas-cleared', () => {
   currentExportId = null;
 });
 
@@ -757,7 +758,17 @@ app.whenReady().then(() => {
   // A macro "Editar Estrutura Química" do LibreOffice usa esse script pra
   // saber como reabrir o app com um .ket específico (ver Fase 7).
   try {
-    libreOfficeExport.ensureLauncherScript(path.join(__dirname, '..'));
+    // Rodando como AppImage, process.execPath aponta pro ponto de montagem
+    // FUSE temporário (ex.: /tmp/.mount_XXXX/librechem) — some quando esse
+    // processo fecha. A variável APPIMAGE (setada pelo runtime do AppImage)
+    // aponta pro .AppImage de verdade no disco, que continua existindo
+    // depois — usar ela quando disponível evita gravar um launcher que já
+    // nasce quebrado pra próxima vez que o LibreOffice tentar chamá-lo.
+    libreOfficeExport.ensureLauncherScript({
+      isPackaged: app.isPackaged,
+      execPath: process.env.APPIMAGE || process.execPath,
+      projectRoot: path.join(__dirname, '..')
+    });
   } catch (err) {
     console.error('Erro ao gravar o launcher pro LibreOffice:', err.message);
   }

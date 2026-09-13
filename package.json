@@ -1,34 +1,48 @@
 {
-  "name": "chemdraw-linux",
-  "productName": "ChemDraw Linux",
+  "name": "librechem",
+  "productName": "LibreChem",
+  "desktopName": "librechem.desktop",
   "version": "0.1.0",
-  "description": "Editor de estruturas químicas 2D estilo ChemDraw, baseado no Ketcher (EPAM), para Zorin OS e Fedora.",
+  "description": "Editor de estruturas químicas 2D pra Linux, baseado no Ketcher (EPAM), com integração por arquivo/macro com o LibreOffice (Zorin OS e Fedora).",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
+  "homepage": "https://github.com/ghrviana/librechem",
+  "author": {
+    "name": "ghrviana",
+    "email": "ghrviana@gmail.com"
+  },
   "main": "src/main.js",
   "scripts": {
     "postinstall": "node scripts/fetch-ketcher.js",
     "fetch-ketcher": "node scripts/fetch-ketcher.js",
     "start": "electron .",
-    "dist:appimage": "electron-builder --linux AppImage",
-    "dist:deb": "electron-builder --linux deb",
-    "dist:rpm": "electron-builder --linux rpm",
-    "dist:all": "electron-builder --linux AppImage deb rpm"
+    "build:oxt": "libreoffice-macro/oxt/build.sh",
+    "dist:appimage": "npm run build:oxt && electron-builder --linux AppImage",
+    "dist:deb": "npm run build:oxt && electron-builder --linux deb",
+    "dist:rpm": "npm run build:oxt && electron-builder --linux rpm",
+    "dist:all": "npm run build:oxt && electron-builder --linux AppImage deb rpm"
   },
   "devDependencies": {
     "electron": "44.3.0",
     "electron-builder": "26.15.3"
   },
   "build": {
-    "appId": "org.ghrviana.chemdrawlinux",
-    "productName": "ChemDraw Linux",
+    "appId": "org.ghrviana.librechem",
+    "productName": "LibreChem",
     "directories": {
       "output": "release"
     },
     "files": [
       "src/**/*",
       "vendor/**/*",
+      "presets/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/LibreChem.oxt",
+        "to": "LibreChem.oxt"
+      }
     ],
     "extraMetadata": {
       "main": "src/main.js"
@@ -40,7 +54,16 @@
         "rpm"
       ],
       "category": "Science",
-      "icon": "build/icons"
+      "icon": "build/icons",
+      "syncDesktopName": true
+    },
+    "deb": {
+      "afterInstall": "build/linux/after-install.sh",
+      "afterRemove": "build/linux/after-remove.sh"
+    },
+    "rpm": {
+      "afterInstall": "build/linux/after-install.sh",
+      "afterRemove": "build/linux/after-remove.sh"
     }
   }
 }
